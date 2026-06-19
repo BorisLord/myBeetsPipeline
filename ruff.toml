@@ -1,0 +1,7 @@
+# Utility scripts (helpers/ + scripts/): compact style on purpose.
+# No Python package; these are short CLI tools, readable on one line.
+line-length = 120
+
+[lint]
+# E701/E702 (one-line statements), E401 (grouped imports), E731 (lambda) = intentional compact style.
+ignore = ["E701", "E702", "E401", "E731"]

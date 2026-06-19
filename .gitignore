@@ -1,0 +1,24 @@
+# Secrets / local config / private session memory (never commit)
+config.env
+*.local.yaml
+*.key
+*.secret
+.memsearch/
+
+# beets DB, backups, logs (created by the scripts; regenerable)
+*.db
+*.db.*
+*.bak
+*.bak.*
+*.log
+
+# Generated outputs (e.g. anomaly-scan.py TSVs)
+*.tsv
+
+# Python bytecode
+__pycache__/
+*.pyc
+
+# OS cruft
+.DS_Store
+Thumbs.db

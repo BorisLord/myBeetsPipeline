@@ -1,0 +1,91 @@
+# config.yaml — main beets config (lean matching; enrichment in separate passes).
+# NOTE: fanarttv_key / lastfm_key are OPTIONAL (online artwork + genres) -- leave REPLACE_ME to skip those
+#       sources, or set your own keys locally (never committed).
+# NOTE: setup.sh patches directory + log. library defaults to library.db alongside this file.
+directory: ~/Music/beetsPipeline/clean   # setup.sh patches this from config.env
+
+# Plugins loaded to provide the COMMANDS; enrichment runs in a separate pass (auto: no).
+plugins: musicbrainz chroma fetchart embedart lastgenre scrub ftintitle duplicates unimported zero missing mbsync bareasc
+# NOTE: `musicbrainz` MUST be listed -- it's a separate metadata-source plugin; without it `chroma`
+#       produces NO MusicBrainz candidates and matching finds nothing.
+
+import:
+  move: yes          # matched albums MOVE to MUSIC_CLEAN; non-imported files stay in source (the leftover pile)
+  copy: no
+  write: yes
+  quiet: yes
+  quiet_fallback: skip
+  timid: no
+  incremental: yes
+  resume: no
+  duplicate_action: skip
+  log: import.log         # relative to BEETSDIR
+ignore_hidden: yes
+
+match:
+  strong_rec_thresh: 0.10
+  preferred:
+    countries: ['US', 'GB|UK']           # preferred release countries (adjust to your locale)
+    media: ['Digital Media|File', 'CD']
+    original_year: yes
+  max_rec:
+    missing_tracks: low
+    unmatched_tracks: low
+
+# Skipped during import: hidden files + video files. Append your own quarantine/junk folder names here.
+ignore: ['.*', '*.mp4', '*.mov', '*.avi', '*.mkv', '*.m4v', '*.wmv', '*.flv', '*.ts', '*.mpg', '*.mpeg', '*.webm', '_', 'Unknown']
+
+replace:
+  '\s*:\s*': ' - '
+  '[<>\?\*\|]': _
+  '\"': _
+  '[\\/]': _
+  '^\.': _
+  '\.$': _
+  '[\x00-\x1f]': _
+  '^-': _
+  '\s+$': ''
+  '^\s+': ''
+
+duplicates:
+  keys: mb_trackid mb_albumid
+
+zero:
+  auto: no
+  update_database: yes
+  # comments: blank ONLY junk-matching values (keep real notes like "Live at…"). encoder: NO pattern
+  # => always blanked (pure technical noise: LAME/iTunes/QuickTime/Nero/Lavf…). lyrics/composer: reviewed by hand.
+  fields: comments encoder
+  comments: ['^Track \d+$', '^0$', '(?i)^no comment$', '(?i)https?://', '(?i)www\.', '(?i)\.(com|net|org|tk|br)\b', '(?i)\bEAC\b', '(?i)\bLame\b', '(?i)CDex', '(?i)Easy CD-DA', '(?i)Tagged By', '(?i)Encoded by', '(?i)ripped by', '(?i)Created with', 'meXPiracy', '(?i)Autodesk', '(?i)bandcamp']
+
+unimported:
+  ignore_extensions: jpg png pdf log cue m3u nfo txt
+  # ignore_subdirectories: <your quarantine/dump folder names>
+
+# Compilations keep their comp=1 TAG but are filed by $albumartist (Various Artists -> "Various
+# Artists/<album>/"), NOT in a separate Compilations/ tree. comp: MUST be set explicitly = default:
+# — beets' BUILT-IN default for comp: is 'Compilations/...', so merely omitting it does NOT work.
+paths:
+  # Only VARIOUS-ARTISTS soundtracks go to Soundtracks/; a single-artist soundtrack (Purple Rain,
+  # A Hard Day's Night...) stays under its artist via default:. Key must precede comp: to win for VA OSTs.
+  comp:1 albumtype:soundtrack: 'Soundtracks/$album%aunique{}/%if{$track,$track }$artist - $title'
+  default:   '$albumartist/$album%if{$year, ($year)}%aunique{}/%if{$track,$track - }$title'
+  comp:      '$albumartist/$album%aunique{}/%if{$track,$track }$artist - $title'
+  singleton: '%if{$album,$albumartist/$album%aunique{}/%if{$track,$track - }$title,$artist/$title%sunique{}}'
+
+# Matching uses chroma/AcoustID (auto: yes). Enrichment (fetchart/embedart/lastgenre, below) is
+# auto: no here -> run separately via scripts/02-enrich.sh (faster, independently retryable).
+chroma: {auto: yes}
+scrub: {auto: yes}    # MANDATORY on every move; strip mime=None ASF/WMA images first via helpers/
+fetchart:
+  auto: no
+  maxwidth: 1000
+  minwidth: 300
+  quality: 75
+  store_source: yes
+  fanarttv_key: REPLACE_ME
+  lastfm_key: REPLACE_ME
+  sources: [coverart, fanarttv, itunes, amazon, lastfm, albumart]
+embedart: {auto: no, maxwidth: 500, quality: 70, ifempty: no}
+lastgenre: {auto: no, source: album, count: 3, force: yes, canonical: yes, whitelist: yes, prefer_specific: yes}
+ui: {color: no}
