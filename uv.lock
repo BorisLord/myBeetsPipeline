@@ -12,8 +12,8 @@ wheels = [
 ]
 
 [[package]]
-name = "musicrec"
-version = "0.1.0"
+name = "golden-beet-config"
+version = "0.4.0"
 source = { editable = "." }
 dependencies = [
     { name = "filelock" },

@@ -2,9 +2,9 @@ import os
 import unittest
 from unittest import mock
 
-from musicrec import admin, cli
-from musicrec import config as configmod
-from musicrec.passes import convert, import_, pipeline, qa
+from gbc import admin, cli
+from gbc import config as configmod
+from gbc.passes import convert, import_, pipeline, qa
 from tests.base import Base
 
 
@@ -44,7 +44,7 @@ class TestAdminInit(Base):
     def test_init_deploys_patched_config(self):
         cenv = self.tmp / "config.env"          # point resolution at a tmp file so init won't write the repo's
         cenv.write_text('MUSIC_CLEAN="${MUSIC_CLEAN:-/x}"\n')
-        with mock.patch.dict(os.environ, {"MUSICREC_CONFIG": str(cenv)}):
+        with mock.patch.dict(os.environ, {"GBC_CONFIG": str(cenv)}):
             self.assertEqual(admin.init(self.cfg, cron=False), 0)
         deployed = self.cfg.beetsdir / "config.yaml"
         self.assertTrue(deployed.exists())

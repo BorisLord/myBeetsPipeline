@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from musicrec import sidecars
+from gbc import sidecars
 from tests.base import Base
 
 

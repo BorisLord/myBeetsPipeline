@@ -1,6 +1,6 @@
 import unittest
 
-from musicrec import anomaly
+from gbc import anomaly
 from tests.base import Base
 
 

@@ -1,13 +1,13 @@
-"""musicrec CLI -- one tool, several doors. beets does art/genres/replaygain/scrub natively during import.
+"""gbc CLI -- one tool, several doors. beets does art/genres/replaygain/scrub natively during import.
 
-  musicrec run [--all]        full pipeline now (import -> qa), incremental
-  musicrec inbox              cron door: import a drop if anything is new, then the pipeline
-  musicrec import [SOURCE]    album-match import only (art + genres + replaygain run automatically)
-  musicrec qa [QUERY]         read-only technical audit + anomaly scan
-  musicrec anomaly [QUERY]    read-only name/anomaly scan only
-  musicrec convert            normalise formats in the clean lib (WMA->AAC, WAV/AIFF->FLAC; originals->quarantine)
-  musicrec init [--cron]      deploy config + beets configs (+ optional cron)
-  musicrec uninstall [--purge] remove tooling (never your music)
+  gbc run [--all]        full pipeline now (import -> qa), incremental
+  gbc inbox              cron door: import a drop if anything is new, then the pipeline
+  gbc import [SOURCE]    album-match import only (art + genres + replaygain run automatically)
+  gbc qa [QUERY]         read-only technical audit + anomaly scan
+  gbc anomaly [QUERY]    read-only name/anomaly scan only
+  gbc convert            normalise formats in the clean lib (WMA->AAC, WAV/AIFF->FLAC; originals->quarantine)
+  gbc init [--cron]      deploy config + beets configs (+ optional cron)
+  gbc uninstall [--purge] remove tooling (never your music)
 """
 import argparse
 import secrets
@@ -20,7 +20,7 @@ from .passes import convert, import_, inbox, pipeline, qa
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="musicrec", description="Beets-driven music recovery pipeline.")
+    p = argparse.ArgumentParser(prog="gbc", description="Beets-driven music recovery pipeline.")
     sub = p.add_subparsers(dest="cmd", required=True)
     pr = sub.add_parser("run", help="full pipeline now (incremental)")
     pr.add_argument("--all", action="store_true", help="reprocess the whole library (ignore watermark)")
@@ -33,7 +33,7 @@ def _build_parser() -> argparse.ArgumentParser:
     pa.add_argument("query", nargs="?", default="", help="scope query (default: whole library)")
     sub.add_parser("convert", help="normalise formats (WMA->AAC, WAV/AIFF->FLAC; originals -> quarantine)")
     pini = sub.add_parser("init", help="deploy config + beets overlays (+ optional cron)")
-    pini.add_argument("--cron", action="store_true", help="also schedule `musicrec inbox` every 15 min")
+    pini.add_argument("--cron", action="store_true", help="also schedule `gbc inbox` every 15 min")
     pun = sub.add_parser("uninstall", help="remove tooling (never your music)")
     pun.add_argument("--purge", action="store_true", help="also remove the beets config dir + catalog")
     return p

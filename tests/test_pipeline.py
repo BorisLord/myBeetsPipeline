@@ -1,8 +1,8 @@
 import unittest
 from unittest import mock
 
-from musicrec import state
-from musicrec.passes import import_, pipeline, qa
+from gbc import state
+from gbc.passes import import_, pipeline, qa
 from tests.base import Base
 
 

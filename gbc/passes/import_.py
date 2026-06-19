@@ -2,7 +2,7 @@
 
 config = move:yes: matched albums MOVE to clean; non-imported files stay in source (the leftover pile to
 curate). Official sidecars are carried into matched albums; imported shells go to quarantine. Same logic
-the old 01-import.sh had, now importable + logged to the single musicrec.log.
+the old 01-import.sh had, now importable + logged to the single gbc.log.
 """
 import tempfile
 from pathlib import Path

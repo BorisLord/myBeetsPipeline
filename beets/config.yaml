@@ -83,7 +83,7 @@ paths:
   singleton: '%if{$album,$albumartist/$album%aunique{}/%if{$track,$track - }$title,$artist/$title%sunique{}}'
 
 # Everything runs natively DURING `beet import` (auto: yes): chroma match, scrub, fetchart (folder->web),
-# embedart, lastgenre, ftintitle, replaygain. musicrec only adds dedup + sidecars + qa around it.
+# embedart, lastgenre, ftintitle, replaygain. gbc only adds dedup + sidecars + qa around it.
 chroma: {auto: yes}
 scrub: {auto: yes}    # MANDATORY on every move; strip mime=None ASF/WMA images first via helpers/
 fetchart:

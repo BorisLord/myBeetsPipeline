@@ -1,6 +1,6 @@
 import unittest
 
-from musicrec.lock import import_lock
+from gbc.lock import import_lock
 from tests.base import Base
 
 

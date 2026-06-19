@@ -1,7 +1,7 @@
 import unittest
 
-from musicrec.lock import import_lock
-from musicrec.passes import inbox
+from gbc.lock import import_lock
+from gbc.passes import inbox
 from tests.base import Base
 
 
@@ -17,7 +17,7 @@ class TestInboxGate(Base):
         (self.cfg.src / "Some Folder" / "a.flac").write_text("x")
         self.cfg.beet = self.fake_beet(stderr="Skipped 1 paths.\n")   # --pretend plan on STDERR, nothing new
         self.assertEqual(inbox.run(self.cfg), 0)
-        self.assertFalse((self.cfg.beetsdir / "musicrec-state.json").exists())   # pipeline never ran
+        self.assertFalse((self.cfg.beetsdir / "gbc-state.json").exists())   # pipeline never ran
 
     def test_inbox_bows_out_when_locked(self):
         (self.cfg.src / "f").mkdir(parents=True)
@@ -25,7 +25,7 @@ class TestInboxGate(Base):
         with import_lock(self.cfg, blocking=True) as got:
             self.assertTrue(got)
             self.assertEqual(inbox.run(self.cfg), 0)                  # busy -> exits without importing
-        self.assertFalse((self.cfg.beetsdir / "musicrec-state.json").exists())
+        self.assertFalse((self.cfg.beetsdir / "gbc-state.json").exists())
 
 
 if __name__ == "__main__":

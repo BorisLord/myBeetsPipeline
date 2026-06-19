@@ -1,12 +1,12 @@
 #!/bin/bash
-# Bootstrap (the only bash left): check deps, install beets + the `musicrec` CLI via uv, then `musicrec init`.
+# Bootstrap (the only bash left): check deps, install beets + the `gbc` CLI via uv, then `gbc init`.
 # Everything else is the Python app. Re-run after installing anything this flags as missing.
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [ -t 1 ]; then B=$'\e[1m'; G=$'\e[32m'; Y=$'\e[33m'; D=$'\e[2m'; R=$'\e[0m'; else B=; G=; Y=; D=; R=; fi
 have() { command -v "$1" >/dev/null 2>&1; }
 
-echo "${B}musicrec setup${R}"
+echo "${B}gbc setup${R}"
 echo "dependencies:"
 have beet   && echo "  ${G}[ok]${R} beets   $(beet --version 2>/dev/null | head -1)" || echo "  ${Y}[--]${R} beets   MISSING"
 have fpcalc && echo "  ${G}[ok]${R} fpcalc  ${D}chromaprint / AcoustID${R}"           || echo "  ${Y}[--]${R} fpcalc  MISSING ${D}(AcoustID matching)${R}"
@@ -14,7 +14,7 @@ have ffmpeg && echo "  ${G}[ok]${R} ffmpeg  ${D}replaygain + integrity${R}"     
 have flac   && echo "  ${G}[ok]${R} flac    ${D}qa integrity${R}"                     || echo "  ${Y}[--]${R} flac    MISSING ${D}(qa integrity)${R}"
 
 if ! have uv; then
-  echo "  ${Y}uv is required${R} (it installs beets + musicrec): curl -LsSf https://astral.sh/uv/install.sh | sh"
+  echo "  ${Y}uv is required${R} (it installs beets + gbc): curl -LsSf https://astral.sh/uv/install.sh | sh"
   exit 1
 fi
 
@@ -37,12 +37,12 @@ if ! have beet || [ ${#need[@]} -gt 0 ]; then
 fi
 echo "  ${G}-> all dependencies present${R}"
 
-# install the musicrec CLI (editable: tracks this repo) and deploy config
+# install the gbc CLI (editable: tracks this repo) and deploy config
 uv tool install --editable "$HERE" --force >/dev/null
 export PATH="$HOME/.local/bin:$PATH"
-echo "  ${G}-> installed musicrec${R} ${D}($(command -v musicrec))${R}"
+echo "  ${G}-> installed gbc${R} ${D}($(command -v gbc))${R}"
 echo
 read -rp "  schedule auto-import on drop (cron, every 15 min)? [y/N] " a
-if [ "$a" = y ] || [ "$a" = Y ]; then musicrec init --cron; else musicrec init; fi
+if [ "$a" = y ] || [ "$a" = Y ]; then gbc init --cron; else gbc init; fi
 echo
-echo "${B}${G}setup complete${R} -- drop album folders in your source dir, then: ${B}musicrec run${R} (or wait for cron)."
+echo "${B}${G}setup complete${R} -- drop album folders in your source dir, then: ${B}gbc run${R} (or wait for cron)."

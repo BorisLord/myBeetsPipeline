@@ -5,12 +5,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from musicrec.config import Config
+from gbc.config import Config
 
 
 class Base(unittest.TestCase):
     def setUp(self):
-        self.tmp = Path(tempfile.mkdtemp(prefix="musicrec-test-"))
+        self.tmp = Path(tempfile.mkdtemp(prefix="gbc-test-"))
         self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
         self.cfg = Config(
             beet="beet",

@@ -10,7 +10,7 @@ covers/lyrics already travel inside the files; this rescues loose files only. RE
 clean (no copy left in source); a file already present in clean (or a redundant cover) is moved to the
 quarantine dir instead (never deleted).
 
-Importable functions (used by the import pass) -- each takes a `log`; falls back to the musicrec logger.
+Importable functions (used by the import pass) -- each takes a `log`; falls back to the gbc logger.
 """
 import json
 import os

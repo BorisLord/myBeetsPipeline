@@ -1,6 +1,6 @@
 import unittest
 
-from musicrec import state
+from gbc import state
 from tests.base import Base
 
 
@@ -16,7 +16,7 @@ class TestState(Base):
 
     def test_corrupt_state_is_none(self):
         self.cfg.beetsdir.mkdir(parents=True, exist_ok=True)
-        (self.cfg.beetsdir / "musicrec-state.json").write_text("{ not json")
+        (self.cfg.beetsdir / "gbc-state.json").write_text("{ not json")
         self.assertIsNone(state.get_watermark(self.cfg))            # fail soft, not crash
 
 

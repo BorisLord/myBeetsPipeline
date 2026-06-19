@@ -1,7 +1,7 @@
 import unittest
 from unittest import mock
 
-from musicrec import dedup
+from gbc import dedup
 from tests.base import Base
 
 

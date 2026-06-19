@@ -1,6 +1,6 @@
 import unittest
 
-from musicrec.beets import run_beet
+from gbc.beets import run_beet
 from tests.base import Base
 
 

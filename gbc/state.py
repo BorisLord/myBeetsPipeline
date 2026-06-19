@@ -1,12 +1,12 @@
 """Watermark of the last successful pipeline run, so a run "omits what the previous run already did":
 enrich/replaygain/qa are scoped to items added since the watermark. First run (no watermark) -> whole
-library (handles the initial bulk). `--all` ignores it. Stored in BEETSDIR/musicrec-state.json.
+library (handles the initial bulk). `--all` ignores it. Stored in BEETSDIR/gbc-state.json.
 """
 import json
 
 
 def _path(cfg):
-    return cfg.beetsdir / "musicrec-state.json"
+    return cfg.beetsdir / "gbc-state.json"
 
 
 def get_watermark(cfg) -> str | None:

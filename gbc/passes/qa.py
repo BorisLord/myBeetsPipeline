@@ -1,5 +1,5 @@
 """Pass 4 -- technical QA (READ-ONLY audit; ends with a conditional ACTIONS summary).
-Same 8 sections the old 04-qa.sh had, now in Python, logged to musicrec.log. `scope` (a beets query, e.g.
+Same 8 sections the old 04-qa.sh had, now in Python, logged to gbc.log. `scope` (a beets query, e.g.
 `added:<watermark>..`) narrows the audit to recent additions; empty scope = whole library.
 """
 import re
@@ -155,7 +155,7 @@ def run(cfg, scope: str = "") -> int:
     if dups:
         actions.append(f"[dups]    {len(dups)} duplicate track(s) -> review section 5, then: beet duplicates -m DUMP")
     if wma:
-        actions.append(f"[format]  {wma} WMA (legacy/proprietary, breaks scrub+players) -> `musicrec convert`")
+        actions.append(f"[format]  {wma} WMA (legacy/proprietary, breaks scrub+players) -> `gbc convert`")
     if baderr + other_bad:
         actions.append(f"[CORRUPT] {baderr + other_bad} file(s) failing integrity -> move to {cfg.dump} and re-rip")
     if mism:

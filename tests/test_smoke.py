@@ -4,11 +4,11 @@ import unittest
 from pathlib import Path
 
 MODULES = [
-    "musicrec", "musicrec.cli", "musicrec.config", "musicrec.logs", "musicrec.beets",
-    "musicrec.lock", "musicrec.state", "musicrec.util", "musicrec.admin", "musicrec.sidecars",
-    "musicrec.anomaly", "musicrec.dedup", "musicrec.passes.import_",
-    "musicrec.passes.qa", "musicrec.passes.pipeline", "musicrec.passes.inbox",
-    "musicrec.passes.convert",
+    "gbc", "gbc.cli", "gbc.config", "gbc.logs", "gbc.beets",
+    "gbc.lock", "gbc.state", "gbc.util", "gbc.admin", "gbc.sidecars",
+    "gbc.anomaly", "gbc.dedup", "gbc.passes.import_",
+    "gbc.passes.qa", "gbc.passes.pipeline", "gbc.passes.inbox",
+    "gbc.passes.convert",
 ]
 
 
@@ -18,7 +18,7 @@ class TestSmoke(unittest.TestCase):
             importlib.import_module(m)
 
     def test_cli_parser_builds(self):
-        from musicrec.cli import _build_parser
+        from gbc.cli import _build_parser
         parser = _build_parser()
         for cmd in ("run", "inbox", "import", "qa", "anomaly", "convert", "init", "uninstall"):
             self.assertTrue(parser.parse_args([cmd]))

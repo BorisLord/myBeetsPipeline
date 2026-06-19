@@ -1,9 +1,9 @@
-# music-recovery
+# golden-beet-config
 
 Recover, organize and enrich a chaotic music library (tens of thousands of loose, badly-tagged
 files) into a clean **album** library you can serve with any player (e.g. Navidrome, Jellyfin, Plex).
 
-Built on **beets**, driven by a single Python app (`musicrec`). Files are re-matched by **AcoustID
+Built on **beets**, driven by a single Python app (`gbc`). Files are re-matched by **AcoustID
 audio fingerprint** + tags, so it is robust to duplicate track numbers, download-batch folders and
 untitled/failed rips — the source folder structure is ignored.
 
@@ -11,7 +11,7 @@ untitled/failed rips — the source folder structure is ignored.
 moved to the clean lib; everything not matched (singletons, weak/failed rips) stays in the source =
 the leftover pile to curate later (e.g. Picard). Empty shells of moved albums are pruned after import.
 
-**One core, several doors:** `musicrec run` (manual) and `musicrec inbox` (cron, on drop) call the
+**One core, several doors:** `gbc run` (manual) and `gbc inbox` (cron, on drop) call the
 **same** pipeline — only the trigger and the scope differ, never the logic.
 
 ---
@@ -42,9 +42,9 @@ RIFF-in-`.mp3` detection), and on-demand format conversion (WMA→AAC, WAV/AIFF�
 ## Quick start
 
 ```bash
-git clone <repo-url> && cd music-recovery
-./setup.sh        # checks deps, installs beets + the `musicrec` CLI (via uv), deploys config (+ optional cron)
-musicrec run      # full pipeline: import -> enrich -> replaygain -> qa
+git clone <repo-url> && cd golden-beet-config
+./setup.sh        # checks deps, installs beets + the `gbc` CLI (via uv), deploys config (+ optional cron)
+gbc run      # full pipeline: import -> enrich -> replaygain -> qa
 ```
 
 No config needed: by default everything lives under `~/Music/beetsPipeline/` (`source/`, `clean/`,
@@ -57,13 +57,13 @@ rest stay in `source/` to curate. Want other paths? Edit `config.env` (created b
 ## Commands
 
 ```
-musicrec run [--all]        full pipeline now (import -> qa); --all = qa over the whole library
-musicrec inbox              cron door: import a drop if anything is new, then the pipeline
-musicrec import [SOURCE]    album-match import (art + genres + replaygain run automatically via beets)
-musicrec qa [QUERY]         read-only technical audit + anomaly scan
-musicrec anomaly [QUERY]    read-only name/anomaly scan only
-musicrec init [--cron]      deploy config + beets config (+ schedule cron)
-musicrec uninstall [--purge] remove the tooling (never your music)
+gbc run [--all]        full pipeline now (import -> qa); --all = qa over the whole library
+gbc inbox              cron door: import a drop if anything is new, then the pipeline
+gbc import [SOURCE]    album-match import (art + genres + replaygain run automatically via beets)
+gbc qa [QUERY]         read-only technical audit + anomaly scan
+gbc anomaly [QUERY]    read-only name/anomaly scan only
+gbc init [--cron]      deploy config + beets config (+ schedule cron)
+gbc uninstall [--purge] remove the tooling (never your music)
 ```
 
 **Incremental by default.** `run`/`inbox` keep a watermark (last successful run); enrich/replaygain/qa
@@ -76,7 +76,7 @@ are scoped to items added since then — so a run *omits what the previous run a
 
 `setup.sh` does all of this — this section is reference for **customizing**. Setup creates `config.env`
 (gitignored) from `config.env.example` and deploys `beets/*.yaml` into `$BEETSDIR`, filling `directory:`
-and the import `log:`. To change paths, edit `config.env` and re-run `./setup.sh` (or `musicrec init`):
+and the import `log:`. To change paths, edit `config.env` and re-run `./setup.sh` (or `gbc init`):
 
 | Var | Meaning |
 |---|---|
@@ -94,10 +94,10 @@ The one thing setup can't fill in: your **API keys** — set `fanarttv_key` / `l
 
 ## Requirements
 
-`./setup.sh` installs **beets** and the **musicrec** CLI for you via **uv** (first choice); for the
+`./setup.sh` installs **beets** and the **gbc** CLI for you via **uv** (first choice); for the
 system tools it prints the exact install command for your OS (apt/dnf/brew):
 
-- **uv** — installs beets + musicrec. (`helpers/` run via `uv run --with mediafile --with mutagen python …`.)
+- **uv** — installs beets + gbc. (`helpers/` run via `uv run --with mediafile --with mutagen python …`.)
 - **beets**. MusicBrainz is a separate plugin → `plugins:` MUST include `musicbrainz`, otherwise `chroma`
   yields no MusicBrainz candidates and matching finds nothing.
 - **fpcalc / Chromaprint** — for the `chroma` (AcoustID) fingerprint matching.
@@ -108,11 +108,11 @@ system tools it prints the exact install command for your OS (apt/dnf/brew):
 
 ## Pipeline
 
-`musicrec run` = **import → qa**. `library.db` is backed up before the import.
+`gbc run` = **import → qa**. `library.db` is backed up before the import.
 
 | Step | Role |
 |---|---|
-| **import** | Album import with **AcoustID + tags**. Only complete, strong albums are kept (`quiet`, weak matches → skip). **beets runs the enrichment natively during import** (`auto: yes`): scrub, **fetchart** (folder cover first, then web), **embedart**, **lastgenre** (genres), **ftintitle** (move "feat. X" into the title), **replaygain** (EBU R128, ffmpeg). musicrec adds **dedup** (drop duplicate audio first) + carries official sidecars (booklet/back/scan/`.lrc`) into the clean album. |
+| **import** | Album import with **AcoustID + tags**. Only complete, strong albums are kept (`quiet`, weak matches → skip). **beets runs the enrichment natively during import** (`auto: yes`): scrub, **fetchart** (folder cover first, then web), **embedart**, **lastgenre** (genres), **ftintitle** (move "feat. X" into the title), **replaygain** (EBU R128, ffmpeg). gbc adds **dedup** (drop duplicate audio first) + carries official sidecars (booklet/back/scan/`.lrc`) into the clean album. |
 | **qa** | READ-ONLY audit: format/bitrate/WMA, duplicates, integrity (`beet bad` for mp3/flac + ffmpeg decode for every other format), **junk metadata** (URLs/EAC/LAME in comments + encoder), then the anomaly scan; ends with a conditional **ACTIONS** summary. Overlay `beets/qa.yaml`. |
 
 Path templates (`config.yaml`): `$albumartist/$album/…`, compilations under `Various Artists/…`,
@@ -122,7 +122,7 @@ VA soundtracks under `Soundtracks/…`. `fetchart` `sources` lists `filesystem` 
 libs): `uv run --with mediafile --with mutagen python helpers/<x>.py` — `scan-scrub-crash.py` to find
 them, then `mutagen-strip.py` / `strip-broken-art.py` (`ROOT=`/`EXTS=`).
 
-**Logs:** **one** file, `$LOG_DIR/musicrec.log` (default `~/Music/beetsPipeline/logs/`), always
+**Logs:** **one** file, `$LOG_DIR/gbc.log` (default `~/Music/beetsPipeline/logs/`), always
 **appended**, every line tagged with the pass and a run id — identical whether the door was `run` or
 `inbox` (no per-pass files; separating identical logs is a smell). beets' own match/skip decisions stay
 in `import-decisions.log` (its native format), and the anomaly TSVs in `logs/anomalies/`.
@@ -156,16 +156,16 @@ only processes new drops.
 
 ## Auto-import (drop & go)
 
-Out of the box nothing watches the folder — you run `musicrec run` yourself. The optional auto-import
-uses **cron** (`setup.sh` / `musicrec init --cron` adds it):
+Out of the box nothing watches the folder — you run `gbc run` yourself. The optional auto-import
+uses **cron** (`setup.sh` / `gbc init --cron` adds it):
 
 ```
-*/15 * * * * PATH=$HOME/.local/bin:$HOME/.local/share/mise/shims:/usr/local/bin:/usr/bin:/bin musicrec inbox >/dev/null 2>&1
+*/15 * * * * PATH=$HOME/.local/bin:$HOME/.local/share/mise/shims:/usr/local/bin:/usr/bin:/bin gbc inbox >/dev/null 2>&1
 ```
 
-Each tick, `musicrec inbox` takes the import lock (bows out if a run is in progress), skips if there's
+Each tick, `gbc inbox` takes the import lock (bows out if a run is in progress), skips if there's
 nothing **new** to import (it reads beet's `--pretend` plan — which beet writes to *stderr*), waits until
-the drop has finished copying (debounce on folder size), then runs the **same** pipeline as `musicrec
+the drop has finished copying (debounce on folder size), then runs the **same** pipeline as `gbc
 run`. Cron and a manual run are mutually exclusive via the shared lock, so you can use either, anytime.
 
 ---
@@ -182,7 +182,7 @@ mise run fix        # ruff safe auto-fixes
 mise run audit      # pip-audit on runtime deps
 ```
 
-The Python app is `musicrec/` (CLI in `cli.py`; passes in `musicrec/passes/`; beets driven via subprocess
+The Python app is `gbc/` (CLI in `cli.py`; passes in `gbc/passes/`; beets driven via subprocess
 in `beets.py`). Tests in `tests/` run with **no network** (a fake `beet`, tmp dirs); the live MusicBrainz/
 AcoustID match is exercised manually.
 
@@ -190,9 +190,9 @@ AcoustID match is exercised manually.
 
 ## Uninstall
 
-`./uninstall.sh` (or `musicrec uninstall`) removes the **tooling only** — the cron entry, logs, and
+`./uninstall.sh` (or `gbc uninstall`) removes the **tooling only** — the cron entry, logs, and
 `config.env`; `--purge` also removes the beets config dir + `library.db`. It then offers to uninstall the
-`musicrec` and `beets` CLIs. It **never touches your music**: `MUSIC_SRC`, `MUSIC_CLEAN`, `MUSIC_DUMP`
+`gbc` and `beets` CLIs. It **never touches your music**: `MUSIC_SRC`, `MUSIC_CLEAN`, `MUSIC_DUMP`
 are left exactly as they are.
 
 ---

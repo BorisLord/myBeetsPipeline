@@ -12,8 +12,8 @@ from pathlib import Path
 from .config import REPO_ROOT, config_path
 from .logs import get_logger
 
-CRON_MARK = "musicrec inbox"
-# cron does NOT expand $HOME in a PATH= line -> bake the real home dir so `musicrec`/`beet` resolve.
+CRON_MARK = "gbc inbox"
+# cron does NOT expand $HOME in a PATH= line -> bake the real home dir so `gbc`/`beet` resolve.
 _HOME = Path.home()
 CRON_PATH = f"{_HOME}/.local/bin:{_HOME}/.local/share/mise/shims:/usr/local/bin:/usr/bin:/bin"
 
@@ -43,21 +43,21 @@ def init(cfg, cron: bool = False) -> int:
 
     if cron:
         _install_cron(log)
-    log.info("init done. drop album folders in %s ; then `musicrec run` (or let cron do it).", cfg.src)
+    log.info("init done. drop album folders in %s ; then `gbc run` (or let cron do it).", cfg.src)
     return 0
 
 
 def _install_cron(log) -> None:
     if not shutil.which("crontab"):
-        log.info("no crontab -- add manually: */15 * * * * PATH=%s musicrec inbox", CRON_PATH)
+        log.info("no crontab -- add manually: */15 * * * * PATH=%s gbc inbox", CRON_PATH)
         return
     cur = subprocess.run(["crontab", "-l"], capture_output=True, text=True).stdout
     if CRON_MARK in cur:
         log.info("cron already scheduled")
         return
-    line = f"*/15 * * * * PATH={CRON_PATH} musicrec inbox >/dev/null 2>&1\n"
+    line = f"*/15 * * * * PATH={CRON_PATH} gbc inbox >/dev/null 2>&1\n"
     subprocess.run(["crontab", "-"], input=cur + line, text=True)
-    log.info("cron scheduled (every 15 min: musicrec inbox)")
+    log.info("cron scheduled (every 15 min: gbc inbox)")
 
 
 def uninstall(cfg, purge: bool = False) -> int:

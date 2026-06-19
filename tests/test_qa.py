@@ -1,6 +1,6 @@
 import unittest
 
-from musicrec.passes.qa import _container_mismatch
+from gbc.passes.qa import _container_mismatch
 from tests.base import Base
 
 

@@ -1,4 +1,4 @@
-# CLAUDE.md — music-recovery (operational brief)
+# CLAUDE.md — golden-beet-config (operational brief)
 
 Always cehck offcial documentation.
 Every features need to be tested
@@ -8,21 +8,21 @@ Full docs: **README.md**. These are the rules so past incidents aren't repeated.
 
 ## What
 
-A single Python app (**`musicrec`**) driving **beets** (engine, via subprocess): recover a chaotic music
+A single Python app (**`gbc`**) driving **beets** (engine, via subprocess): recover a chaotic music
 library into a clean **album** library (served by any Subsonic/DLNA player). Album-mode + AcoustID; only
 complete, strong albums are kept — loose singletons stay parked in the source for manual curation.
 
 ## Architecture (one core, several doors)
 
-`musicrec run` (manual) and `musicrec inbox` (cron, on drop) call the **same** pipeline
-(`musicrec/passes/pipeline.py`: **import → qa**). beets does art/genres/replaygain/scrub/ftintitle
-**natively during `beet import`** (`auto: yes` in `config.yaml`); musicrec only adds **dedup** (before
-import) + **sidecars** (after) + **qa/anomaly** (audit). Passes in `musicrec/passes/`; beets driven
+`gbc run` (manual) and `gbc inbox` (cron, on drop) call the **same** pipeline
+(`gbc/passes/pipeline.py`: **import → qa**). beets does art/genres/replaygain/scrub/ftintitle
+**natively during `beet import`** (`auto: yes` in `config.yaml`); gbc only adds **dedup** (before
+import) + **sidecars** (after) + **qa/anomaly** (audit). Passes in `gbc/passes/`; beets driven
 through `beets.run_beet` (captures stdout **and stderr** — beet logs its `--pretend` plan to stderr);
 config in `config.py`; single logger in `logs.py`; import lock (filelock) in `lock.py`; incremental
-watermark (scopes qa) in `state.py`. `setup.sh` is the only bash (deps + `uv tool install --editable .` + `musicrec init`).
+watermark (scopes qa) in `state.py`. `setup.sh` is the only bash (deps + `uv tool install --editable .` + `gbc init`).
 
-- **Logs: one file** `$LOG_DIR/musicrec.log`, append-only, every line tagged `[pass]` + run id — same for
+- **Logs: one file** `$LOG_DIR/gbc.log`, append-only, every line tagged `[pass]` + run id — same for
   `run` and `cron` (never per-pass files). beets' own decisions stay in `import-decisions.log`.
 - **Incremental:** enrich/replaygain/qa scope to items added since the last successful run (watermark);
   `--all` reprocesses everything. import is incremental via beets (`incremental: yes`).
@@ -32,7 +32,7 @@ watermark (scopes qa) in `state.py`. `setup.sh` is the only bash (deps + `uv too
 
 Paths come from `config.env` (copy of `config.env.example`, gitignored) — use the vars, never hardcode:
 `BEET`, `BEETSDIR`, `MUSIC_SRC`, `MUSIC_CLEAN`, `MUSIC_DUMP` (quarantine — never `rm`), `LOG_DIR`.
-`config.py` sources `config.env` (resolves `$MUSICREC_CONFIG` / `~/.config/musicrec/` / repo root).
+`config.py` sources `config.env` (resolves `$GBC_CONFIG` / `~/.config/gbc/` / repo root).
 
 ## CRITICAL RULES (learned the hard way)
 

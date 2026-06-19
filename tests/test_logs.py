@@ -1,12 +1,12 @@
 import logging
 import unittest
 
-from musicrec import logs
+from gbc import logs
 from tests.base import Base
 
 
 def _reset():
-    lg = logging.getLogger("musicrec")
+    lg = logging.getLogger("gbc")
     for h in lg.handlers:
         h.close()
     lg.handlers.clear()
@@ -24,15 +24,15 @@ class TestLogs(Base):
         logs.configure(self.tmp, "ab12", console=False)
         logs.get_logger("import").info("hello world")
         logs.get_logger("enrich").info("second pass")
-        text = (self.tmp / "musicrec.log").read_text()
+        text = (self.tmp / "gbc.log").read_text()
         self.assertIn("run=ab12  [import]  INFO  hello world", text)
         self.assertIn("run=ab12  [enrich]  INFO  second pass", text)
-        self.assertEqual(list(self.tmp.glob("*.log")), [self.tmp / "musicrec.log"])  # NOT one file per pass
+        self.assertEqual(list(self.tmp.glob("*.log")), [self.tmp / "gbc.log"])  # NOT one file per pass
 
         _reset()                                      # a later run APPENDS (never truncates)
         logs.configure(self.tmp, "cd34", console=False)
         logs.get_logger("qa").info("later line")
-        text2 = (self.tmp / "musicrec.log").read_text()
+        text2 = (self.tmp / "gbc.log").read_text()
         self.assertIn("hello world", text2)
         self.assertIn("run=cd34  [qa]  INFO  later line", text2)
 

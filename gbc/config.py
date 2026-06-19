@@ -4,7 +4,7 @@ config.env stays shell-syntax (`VAR="${VAR:-default}"`); we evaluate it faithful
 in a subshell (so its `${VAR:-default}` and any inline env override behave exactly as before), then
 read the effective values back. No config.env -> built-in defaults (identical to config.env.example).
 
-Resolution order for config.env: $MUSICREC_CONFIG, ~/.config/musicrec/config.env, <repo>/config.env
+Resolution order for config.env: $GBC_CONFIG, ~/.config/gbc/config.env, <repo>/config.env
 (repo root works for the editable `uv tool install --editable .` install).
 """
 import os
@@ -49,9 +49,9 @@ def _defaults() -> dict:
 
 
 def config_path() -> Path | None:
-    env = os.environ.get("MUSICREC_CONFIG")
+    env = os.environ.get("GBC_CONFIG")
     candidates = [Path(env)] if env else []
-    candidates += [Path.home() / ".config" / "musicrec" / "config.env", REPO_ROOT / "config.env"]
+    candidates += [Path.home() / ".config" / "gbc" / "config.env", REPO_ROOT / "config.env"]
     return next((p for p in candidates if p.is_file()), None)
 
 
