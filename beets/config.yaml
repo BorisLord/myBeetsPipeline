@@ -23,7 +23,7 @@ import:
 ignore_hidden: yes
 
 match:
-  strong_rec_thresh: 0.10
+  strong_rec_thresh: 0.15
   preferred:
     countries: ['US', 'GB|UK']           # preferred release countries (adjust to your locale)
     media: ['Digital Media|File', 'CD']
@@ -33,7 +33,8 @@ match:
     unmatched_tracks: low
 
 # Skipped during import: hidden files + video files. Append your own quarantine/junk folder names here.
-ignore: ['.*', '*.mp4', '*.mov', '*.avi', '*.mkv', '*.m4v', '*.wmv', '*.flv', '*.ts', '*.mpg', '*.mpeg', '*.webm', '_', 'Unknown']
+ignore: ['.*', '*.mp4', '*.mov', '*.avi', '*.mkv', '*.m4v', '*.wmv', '*.flv', '*.ts', '*.mpg', '*.mpeg', '*.webm',
+         'desktop.ini', 'Thumbs.db', 'thumbs.db', '*.url', '@eaDir', '_', 'Unknown']
 
 replace:
   '\s*:\s*': ' - '

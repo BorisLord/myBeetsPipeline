@@ -15,9 +15,16 @@ config.env
 # Generated outputs (e.g. anomaly-scan.py TSVs)
 *.tsv
 
-# Python bytecode
+# Python bytecode + packaging/test artifacts
 __pycache__/
 *.pyc
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.venv/
+.pip-audit-cache/
+.ruff_cache/
 
 # OS cruft
 .DS_Store

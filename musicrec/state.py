@@ -1,0 +1,30 @@
+"""Watermark of the last successful pipeline run, so a run "omits what the previous run already did":
+enrich/replaygain/qa are scoped to items added since the watermark. First run (no watermark) -> whole
+library (handles the initial bulk). `--all` ignores it. Stored in BEETSDIR/musicrec-state.json.
+"""
+import json
+
+
+def _path(cfg):
+    return cfg.beetsdir / "musicrec-state.json"
+
+
+def get_watermark(cfg) -> str | None:
+    p = _path(cfg)
+    if not p.exists():
+        return None
+    try:
+        return json.loads(p.read_text(encoding="utf-8")).get("last_run")
+    except (ValueError, OSError):
+        return None
+
+
+def set_watermark(cfg, iso_ts: str) -> None:
+    p = _path(cfg)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps({"last_run": iso_ts}), encoding="utf-8")
+
+
+def added_query(watermark: str | None) -> str:
+    """beets query scoping to items added at/after the watermark; '' (whole lib) when no watermark."""
+    return f"added:{watermark}.." if watermark else ""

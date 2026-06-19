@@ -1,7 +1,8 @@
-# Utility scripts (helpers/ + scripts/): compact style on purpose.
-# No Python package; these are short CLI tools, readable on one line.
+# Lint config — same rule set as the gemini-bridge backbone.
+# helpers/ are legacy standalone WMA-art tools (compact one-liner style); they are syntax-checked by the
+# test-suite (py_compile) rather than linted under the strict set.
 line-length = 120
+extend-exclude = ["helpers"]
 
 [lint]
-# E701/E702 (one-line statements), E401 (grouped imports), E731 (lambda) = intentional compact style.
-ignore = ["E701", "E702", "E401", "E731"]
+select = ["F", "E", "W", "B", "I", "UP", "RUF", "SIM", "PIE", "RET", "C4", "PTH", "Q"]

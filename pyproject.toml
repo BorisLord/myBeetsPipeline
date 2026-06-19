@@ -1,0 +1,20 @@
+# musicrec — single Python orchestration app driving beets (engine) via subprocess.
+# Install as a CLI:  uv tool install --editable .   ->  `musicrec` on PATH (cron calls `musicrec inbox`).
+[project]
+name = "musicrec"
+version = "0.1.0"
+description = "Recover a chaotic music library into a clean album library (beets-driven pipeline)."
+requires-python = ">=3.11"
+dependencies = ["filelock>=3.12"]
+
+[project.scripts]
+musicrec = "musicrec.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["musicrec"]
+
+# Tests use the stdlib `unittest` (no pytest dependency) -- see `mise run test`.

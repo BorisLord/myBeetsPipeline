@@ -1,17 +1,40 @@
 # CLAUDE.md — music-recovery (operational brief)
 
+Always cehck offcial documentation.
+Every features need to be tested
+Everything need to be logic and well coded with good practice
+
 Full docs: **README.md**. These are the rules so past incidents aren't repeated.
 
 ## What
-A **beets** pipeline: recover a chaotic music library into a clean **album** library (served by any
-Subsonic/DLNA player). Album-mode + AcoustID; only complete, strong albums are kept — loose singletons stay parked
-in the source for manual curation. Steps in README.
+
+A single Python app (**`musicrec`**) driving **beets** (engine, via subprocess): recover a chaotic music
+library into a clean **album** library (served by any Subsonic/DLNA player). Album-mode + AcoustID; only
+complete, strong albums are kept — loose singletons stay parked in the source for manual curation.
+
+## Architecture (one core, several doors)
+
+`musicrec run` (manual) and `musicrec inbox` (cron, on drop) call the **same** pipeline
+(`musicrec/passes/pipeline.py`: import → enrich → replaygain → qa) — only the trigger + scope differ.
+Passes in `musicrec/passes/`; beets driven through `beets.run_beet` (captures stdout **and stderr** —
+beet logs its `--pretend` plan to stderr); config in `config.py`; the single logger in `logs.py`; the
+import lock (filelock) in `lock.py`; the incremental watermark in `state.py`. `setup.sh` is the only bash
+(bootstrap: deps + `uv tool install --editable .` + `musicrec init`).
+
+- **Logs: one file** `$LOG_DIR/musicrec.log`, append-only, every line tagged `[pass]` + run id — same for
+  `run` and `cron` (never per-pass files). beets' own decisions stay in `import-decisions.log`.
+- **Incremental:** enrich/replaygain/qa scope to items added since the last successful run (watermark);
+  `--all` reprocesses everything. import is incremental via beets (`incremental: yes`).
+- **Tooling:** `mise run test|lint|fix|audit`; tests are stdlib **unittest** (no pytest), no network.
 
 ## Config
+
 Paths come from `config.env` (copy of `config.env.example`, gitignored) — use the vars, never hardcode:
-`BEET`, `BEETSDIR`, `MUSIC_SRC`, `MUSIC_CLEAN`, `MUSIC_DUMP` (quarantine — never `rm`).
+`BEET`, `BEETSDIR`, `MUSIC_SRC`, `MUSIC_CLEAN`, `MUSIC_DUMP` (quarantine — never `rm`), `LOG_DIR`.
+`config.py` sources `config.env` (resolves `$MUSICREC_CONFIG` / `~/.config/musicrec/` / repo root).
 
 ## CRITICAL RULES (learned the hard way)
+
 1. **Never delete → move to `$MUSIC_DUMP`.** An accidental `rm` once destroyed thousands of tracks.
    If your filesystem supports snapshots (ZFS/btrfs/LVM), snapshot before any mass op; always `cp library.db`
    first. Only empty dir shells may be `rmdir`'d.
@@ -32,13 +55,16 @@ Paths come from `config.env` (copy of `config.env.example`, gitignored) — use 
    dominant-artist albums. "comp-heavy" (a hit appearing on many comps) is NOT a comp signal.
 
 ## Verified facts (do not re-debate)
+
 - **Rate-limiting is NOT the cause of skips** (0 real 429/503 over 10k+ evaluations); skips = weak match
-  + quiet mode refusing to guess. No personal AcoustID key needed (non-commercial use is free).
+  - quiet mode refusing to guess. No personal AcoustID key needed (non-commercial use is free).
 - **WMA** format is stored as "Windows Media" → query `format::Windows`, not `format:WMA`.
 
 ## Secrets
+
 API keys in `beets/config.yaml` are redacted (`REPLACE_ME`); supply your own locally.
 
 ## Style
+
 Concise, English. No emoji unless asked. `file:line` pointers, not pasted code that drifts. Confirm in
 one word. Never `git commit` without explicit approval.

@@ -1,0 +1,43 @@
+import unittest
+
+from musicrec.beets import run_beet
+from tests.base import Base
+
+
+class TestBeetsRunner(Base):
+    def test_merges_stdout_and_stderr(self):
+        self.cfg.beet = self.fake_beet(stdout="OUT line\n", stderr="ERR line\n", code=0)
+        rc, text = run_beet(self.cfg, ["whatever"], passname="test", echo_lines=False)
+        self.assertEqual(rc, 0)
+        # both streams captured -- the old bash gate dropped stderr, which caused the import bug
+        self.assertIn("OUT line", text)
+        self.assertIn("ERR line", text)
+
+    def test_returns_nonzero_code(self):
+        self.cfg.beet = self.fake_beet(stderr="boom\n", code=3)
+        rc, text = run_beet(self.cfg, ["x"], passname="test", echo_lines=False)
+        self.assertEqual(rc, 3)
+        self.assertIn("boom", text)
+
+    def test_missing_beet_gives_clear_error(self):
+        self.cfg.beet = "definitely-not-a-real-binary-xyz"
+        with self.assertRaises(RuntimeError) as ctx:
+            run_beet(self.cfg, ["ls"], passname="test", echo_lines=False)
+        self.assertIn("beet not found", str(ctx.exception))
+
+    def test_passes_overlay_and_beetsdir(self):
+        script = self.tmp / "echobeet"
+        script.write_text("#!/usr/bin/env python3\nimport os, sys\n"
+                          "print('ARGS', ' '.join(sys.argv[1:]))\n"
+                          "print('BEETSDIR', os.environ.get('BEETSDIR'))\n")
+        script.chmod(0o755)
+        self.cfg.beet = str(script)
+        _, text = run_beet(self.cfg, ["import", "-q"], overlay="fetchart-fs.yaml", passname="test", echo_lines=False)
+        self.assertIn("-c", text)
+        self.assertIn("fetchart-fs.yaml", text)
+        self.assertIn("import -q", text)
+        self.assertIn(f"BEETSDIR {self.cfg.beetsdir}", text)
+
+
+if __name__ == "__main__":
+    unittest.main()

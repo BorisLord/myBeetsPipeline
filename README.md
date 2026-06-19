@@ -3,13 +3,16 @@
 Recover, organize and enrich a chaotic music library (tens of thousands of loose, badly-tagged
 files) into a clean **album** library you can serve with any player (e.g. Navidrome, Jellyfin, Plex).
 
-Built on **beets** (latest). Files are re-matched by **AcoustID audio fingerprint** + tags,
-so it is robust to duplicate track numbers, download-batch folders and untitled/failed rips — the
-source folder structure is ignored.
+Built on **beets**, driven by a single Python app (`musicrec`). Files are re-matched by **AcoustID
+audio fingerprint** + tags, so it is robust to duplicate track numbers, download-batch folders and
+untitled/failed rips — the source folder structure is ignored.
 
 **Strategy:** import in **album mode** with `move` — only **complete, strongly-matched albums** are
 moved to the clean lib; everything not matched (singletons, weak/failed rips) stays in the source =
 the leftover pile to curate later (e.g. Picard). Empty shells of moved albums are pruned after import.
+
+**One core, several doors:** `musicrec run` (manual) and `musicrec inbox` (cron, on drop) call the
+**same** pipeline — only the trigger and the scope differ, never the logic.
 
 ---
 
@@ -17,30 +20,51 @@ the leftover pile to curate later (e.g. Picard). Empty shells of moved albums ar
 
 ```bash
 git clone <repo-url> && cd music-recovery
-./setup.sh     # installs beets (uv/pipx); if a system tool is missing it prints the command + stops -> re-run once
-./run.sh       # full pipeline: import -> enrich -> replaygain -> QA
+./setup.sh        # checks deps, installs beets + the `musicrec` CLI (via uv), deploys config (+ optional cron)
+musicrec run      # full pipeline: import -> enrich -> replaygain -> qa
 ```
 
 No config needed: by default everything lives under `~/Music/beetsPipeline/` (`source/`, `clean/`,
-`quarantine/`). Put the music to import in `source/` — matched albums **move** to `clean/`, the rest stay
-in `source/` to curate. Want other paths? Edit `config.env` (created by setup) and re-run `./setup.sh`.
-For ongoing additions, drop albums in `source/` and let `scripts/process-inbox.sh` auto-import them (see below).
+`quarantine/`, `logs/`). Put the music to import in `source/` — matched albums **move** to `clean/`, the
+rest stay in `source/` to curate. Want other paths? Edit `config.env` (created by setup) and re-run
+`./setup.sh`. For ongoing additions, drop albums in `source/` and let cron auto-import them (see below).
+
+---
+
+## Commands
+
+```
+musicrec run [--all]        full pipeline now (import -> enrich -> replaygain -> qa); --all reprocesses everything
+musicrec inbox              cron door: import a drop if anything is new, then the pipeline
+musicrec import [SOURCE]    album-match import only
+musicrec enrich [QUERY]     front art + genres + ftintitle (default: whole library)
+musicrec replaygain [QUERY] ReplayGain (ffmpeg backend)
+musicrec qa [QUERY]         read-only technical audit + anomaly scan
+musicrec anomaly [QUERY]    read-only name/anomaly scan only
+musicrec init [--cron]      deploy config + beets overlays (+ schedule cron)
+musicrec uninstall [--purge] remove the tooling (never your music)
+```
+
+**Incremental by default.** `run`/`inbox` keep a watermark (last successful run); enrich/replaygain/qa
+are scoped to items added since then — so a run *omits what the previous run already did*. The first run
+(no watermark) processes the whole library; `--all` forces that again.
 
 ---
 
 ## Configuration
 
-`setup.sh` already does all of this — this section is reference for **customizing**. Setup creates
-`config.env` (gitignored) from `config.env.example` and deploys `beets/*.yaml` into `$BEETSDIR`, patching
-`directory:` and `import.log:`. To change paths, edit `config.env` and re-run `./setup.sh`:
+`setup.sh` does all of this — this section is reference for **customizing**. Setup creates `config.env`
+(gitignored) from `config.env.example` and deploys `beets/*.yaml` into `$BEETSDIR`, filling `directory:`
+and the import `log:`. To change paths, edit `config.env` and re-run `./setup.sh` (or `musicrec init`):
 
 | Var | Meaning |
 |---|---|
-| `BEET` | beets binary (absolute path) |
-| `BEETSDIR` | beets config dir (holds `config.yaml` + overlays) |
+| `BEET` | beets binary (absolute path if not on `$PATH`) |
+| `BEETSDIR` | beets config dir (holds `config.yaml` + overlays + `library.db`) |
 | `MUSIC_SRC` | messy source library to import **from** |
 | `MUSIC_CLEAN` | clean album destination (point your player here) |
 | `MUSIC_DUMP` | quarantine dir — cull here, **never `rm`** |
+| `LOG_DIR` | logs (default: next to `clean/`) |
 
 The one thing setup can't fill in: your **API keys** — set `fanarttv_key` / `lastfm_key` in
 `$BEETSDIR/config.yaml` for online artwork + genres (optional; left as `REPLACE_ME` otherwise). Never commit keys.
@@ -49,44 +73,41 @@ The one thing setup can't fill in: your **API keys** — set `fanarttv_key` / `l
 
 ## Requirements
 
-`./setup.sh` installs **beets** for you (it asks: `uv`, `pipx`, or `mise`); for the system tools it
-detects what's missing and prints the exact install command for your OS (apt/dnf/brew):
+`./setup.sh` installs **beets** and the **musicrec** CLI for you via **uv** (first choice); for the
+system tools it prints the exact install command for your OS (apt/dnf/brew):
 
-- **uv** / `pipx` / `mise` — to install beets (setup asks which); `helpers/` run via `uv run --with mediafile --with mutagen python …`.
-- **beets** (latest). MusicBrainz is now a separate plugin → `plugins:` MUST include `musicbrainz`,
-  otherwise `chroma` yields no MusicBrainz candidates and matching finds nothing.
+- **uv** — installs beets + musicrec. (`helpers/` run via `uv run --with mediafile --with mutagen python …`.)
+- **beets**. MusicBrainz is a separate plugin → `plugins:` MUST include `musicbrainz`, otherwise `chroma`
+  yields no MusicBrainz candidates and matching finds nothing.
 - **fpcalc / Chromaprint** — for the `chroma` (AcoustID) fingerprint matching.
-- **ffmpeg** — for the ReplayGain step.
-- **flac + mp3val** — for the `04-qa` file-integrity check (`beet bad`); `mp3val` is best-effort (not in every distro).
+- **ffmpeg** — for ReplayGain and the QA integrity decode.
+- **flac + mp3val** — for the QA file-integrity check (`beet bad`); `mp3val` is best-effort.
 
 ---
 
 ## Pipeline
 
-Each script sources `config.env` and backs up `library.db` before running.
+The four passes (run together by `musicrec run`, or individually). `library.db` is backed up before each
+mass write.
 
-| Step | Script | Role |
-|---|---|---|
-| **1 — match** | `scripts/01-import.sh` | Album import with **AcoustID + tags**. Only complete, strong albums are kept (`quiet`, weak matches → skip). Scrub + folder cover during import; official sidecars (booklet/back/scan/`.lrc`) moved into clean. |
-| **2 — enrich** | `scripts/02-enrich.sh` | `lastgenre` (genres), `ftintitle` (move "feat. X" out of the artist field into the title), front artwork. |
-| **3 — replaygain** | `scripts/03-replaygain.sh` | ReplayGain (EBU R128 volume, ffmpeg backend) — overlay `beets/replaygain.yaml`. |
-| **4 — QA** | `scripts/04-qa.sh` | Technical audit: format/bitrate/WMA, duplicates, integrity (`beet bad` for mp3/flac + ffmpeg decode for every other format), **junk metadata** cleanup (URLs/EAC/LAME in comments + encoder via `zero`) — overlay `beets/qa.yaml`. |
-
-**On-demand tools** (not numbered steps):
-- `scripts/anomaly-scan.py` — READ-ONLY scan → one TSV per anomaly family (junk album names, artist/album spelling variants, `feat.` in albumartist, disc-number-in-name, dups, orphans) for manual review.
-- `scripts/sidecars.py` — snapshot/apply tool that step 1 uses to **move** official sidecars (booklet/back/scan/`.lrc`) from source into the matched clean album (matched by audio duration; a copy already in clean → quarantine, never deleted).
-
-`helpers/` fix the scrub crash on embedded images with `mime=None` (WMA/ASF). Run them via uv (it
-pulls the needed libs): `uv run --with mediafile --with mutagen python helpers/<x>.py` —
-`scan-scrub-crash.py` to find them, then `mutagen-strip.py` / `strip-broken-art.py` (`ROOT=`/`EXTS=`).
+| Pass | Role |
+|---|---|
+| **import** | Album import with **AcoustID + tags**. Only complete, strong albums are kept (`quiet`, weak matches → skip). Scrub + folder cover during import; official sidecars (booklet/back/scan/`.lrc`) moved into the clean album. |
+| **enrich** | front artwork (`fetchart`/`embedart`), `lastgenre` (genres), `ftintitle` (move "feat. X" out of the artist into the title). |
+| **replaygain** | ReplayGain (EBU R128 volume, ffmpeg backend) — overlay `beets/replaygain.yaml`. |
+| **qa** | READ-ONLY audit: format/bitrate/WMA, duplicates, integrity (`beet bad` for mp3/flac + ffmpeg decode for every other format), **junk metadata** (URLs/EAC/LAME in comments + encoder), then the anomaly scan; ends with a conditional **ACTIONS** summary. Overlay `beets/qa.yaml`. |
 
 Path templates (`config.yaml`): `$albumartist/$album/…`, compilations under `Various Artists/…`,
 VA soundtracks under `Soundtracks/…`. The `beets/fetchart-fs.yaml` overlay prefers the folder cover.
 
-**Logs:** all logs live in `$LOG_DIR` (default `~/Music/beetsPipeline/logs/`, next to your library;
-override in `config.env`). One file per pass, always **appended** (never overwritten): `01-import.log`,
-`02-enrich.log`, `03-replaygain.log`, `04-qa.log`, `inbox.log` (cron), plus `import-decisions.log`
-(beets' match/skip decisions).
+`helpers/` fix the scrub crash on embedded images with `mime=None` (WMA/ASF). Run via uv (it pulls the
+libs): `uv run --with mediafile --with mutagen python helpers/<x>.py` — `scan-scrub-crash.py` to find
+them, then `mutagen-strip.py` / `strip-broken-art.py` (`ROOT=`/`EXTS=`).
+
+**Logs:** **one** file, `$LOG_DIR/musicrec.log` (default `~/Music/beetsPipeline/logs/`), always
+**appended**, every line tagged with the pass and a run id — identical whether the door was `run` or
+`inbox` (no per-pass files; separating identical logs is a smell). beets' own match/skip decisions stay
+in `import-decisions.log` (its native format), and the anomaly TSVs in `logs/anomalies/`.
 
 ---
 
@@ -103,62 +124,76 @@ mis-named files. Per source folder:
 4. **Decide** — `quiet` + `quiet_fallback: skip`: strong matches auto-accept, everything else is
    **skipped** (it never guesses).
 5. **Act** — accepted → files **move** to `MUSIC_CLEAN`, reorganized by the path templates, scrubbed,
-   with the folder cover + official sidecars (booklet/back/scan/`.lrc`) **moved** over (a dup already in
-   clean → quarantine, never deleted). Unmatched files **stay** in the source = your curation pile; empty shells pruned.
+   with the folder cover + official sidecars **moved** over (a dup already in clean → quarantine, never
+   deleted). Unmatched files **stay** in source = your curation pile; empty shells pruned.
 
-**Formats:** all common types work — MP3, FLAC, M4A/AAC/ALAC, Ogg/Opus, WMA, APE, WavPack, AIFF… (tags
-via mediafile/mutagen, audio via ffmpeg/fpcalc). WAV carries almost no tags by design, and WMA/ASF with a
-broken embedded image needs the `helpers/` pre-strip first (see Lessons).
+**Formats:** all common types work — MP3, FLAC, M4A/AAC/ALAC, Ogg/Opus, WMA, APE, WavPack, AIFF… WAV
+carries almost no tags by design, and WMA/ASF with a broken embedded image needs the `helpers/`
+pre-strip first (see Lessons).
 
-Drop complete **album folders** (not loose files); `incremental: yes` records done folders, so
-re-running only processes new drops.
+Drop complete **album folders** (not loose files); `incremental: yes` records done folders, so a re-run
+only processes new drops.
 
 ---
 
 ## Auto-import (drop & go)
 
-**When does it run?** Out of the box, nothing watches the folder — you run `./run.sh` yourself. The
-optional auto-import uses **cron** (the simplest, most portable, battle-tested choice); `setup.sh` offers
-to add the entry, or add it yourself (fix the path):
+Out of the box nothing watches the folder — you run `musicrec run` yourself. The optional auto-import
+uses **cron** (`setup.sh` / `musicrec init --cron` adds it):
 
-`*/15 * * * * PATH=$HOME/.local/bin:$HOME/.local/share/mise/shims:/usr/bin:/bin /bin/bash /path/to/scripts/process-inbox.sh >> /path/to/import.log 2>&1`
+```
+*/15 * * * * PATH=$HOME/.local/bin:$HOME/.local/share/mise/shims:/usr/local/bin:/usr/bin:/bin musicrec inbox >/dev/null 2>&1
+```
 
-Each run, `scripts/process-inbox.sh` checks the source: if a folder was dropped it **waits until the
-copy/download has finished** (debounce on folder size — a half-copied folder is never imported), takes a
-lock (no concurrent run), imports it (strong → `clean/`, weak/untagged → left in `source/`), then enriches
-the day's additions (genres + ftintitle + artwork + replaygain). Empty and already-done folders are
-skipped, so polling is cheap — and ≤15 min latency is irrelevant for music imports (why cron beats a
-real-time watcher here).
+Each tick, `musicrec inbox` takes the import lock (bows out if a run is in progress), skips if there's
+nothing **new** to import (it reads beet's `--pretend` plan — which beet writes to *stderr*), waits until
+the drop has finished copying (debounce on folder size), then runs the **same** pipeline as `musicrec
+run`. Cron and a manual run are mutually exclusive via the shared lock, so you can use either, anytime.
 
-**Interventions:** a well-tagged, complete album → auto-imported, nothing to do. Whatever is *not*
-auto-matched (weak/untagged/incomplete) stays in `$MUSIC_SRC` → review it (fix tags in Picard so it
-re-imports, or move it to `$MUSIC_DUMP`). Occasionally run `04-qa.sh` + `anomaly-scan.py` for QA.
+---
+
+## Development
+
+Tooling backbone is `mise` (pinned tools) + the stdlib `unittest`:
+
+```bash
+mise install        # python, uv, ruff
+mise run test       # unit tests (python -m unittest discover)
+mise run lint       # ruff (F,E,W,B,I,UP,RUF,SIM,PIE,RET,C4,PTH,Q @120)
+mise run fix        # ruff safe auto-fixes
+mise run audit      # pip-audit on runtime deps
+```
+
+The Python app is `musicrec/` (CLI in `cli.py`; passes in `musicrec/passes/`; beets driven via subprocess
+in `beets.py`). Tests in `tests/` run with **no network** (a fake `beet`, tmp dirs); the live MusicBrainz/
+AcoustID match is exercised manually.
 
 ---
 
 ## Uninstall
 
-`./uninstall.sh` removes the **tooling only** — the cron auto-import entry, the beets config dir
-(`$BEETSDIR`, incl. the `library.db` catalog), `config.env` + `import.log`, and optionally beets itself
-(prompted). It **never touches your music**: `MUSIC_SRC`, `MUSIC_CLEAN` and `MUSIC_DUMP` are left exactly
-as they are — delete those by hand if you really want them gone.
+`./uninstall.sh` (or `musicrec uninstall`) removes the **tooling only** — the cron entry, logs, and
+`config.env`; `--purge` also removes the beets config dir + `library.db`. It then offers to uninstall the
+`musicrec` and `beets` CLIs. It **never touches your music**: `MUSIC_SRC`, `MUSIC_CLEAN`, `MUSIC_DUMP`
+are left exactly as they are.
 
 ---
 
 ## Lessons / gotchas (verified in production)
 
-- **Scrub crashes on `mime=None` images** (WMA/ASF): strip the image first with `helpers/` (run via
-  `uv run --with mediafile --with mutagen python …`). **Never disable scrub** — it runs on every move.
+- **Scrub crashes on `mime=None` images** (WMA/ASF): strip the image first with `helpers/`. **Never
+  disable scrub** — it runs on every move.
 - **Quarantine, don't `rm`.** Cull by moving to `$MUSIC_DUMP`; an accidental delete once destroyed
-  thousands of tracks. If your filesystem supports snapshots (ZFS/btrfs/LVM), snapshot before any mass
-  op, and `cp library.db` first. Only empty dir shells may be `rmdir`'d.
+  thousands of tracks. If your FS supports snapshots (ZFS/btrfs/LVM), snapshot before any mass op, and
+  `cp library.db` first. Only empty dir shells may be `rmdir`'d.
 - **Never dedup on the db alone.** The same recording can legitimately be on a studio album AND a
   compilation. Correlate the files (duration + bitrate), keep the best bitrate, never break an album.
-- **Compilations group by album TITLE, not albumartist** (else VA comps scatter one group per
-  artist); then exclude generic titles + dominant-artist albums.
-- **Back up `library.db`** before any bulk `modify`/`move`/`remove` (the scripts do it automatically).
-- **Never use `--from-logfile`** on these logs (parent paths + names with `;` → recursion). Import
-  the directory directly.
+- **Compilations group by album TITLE, not albumartist**; then exclude generic titles + dominant-artist albums.
+- **Back up `library.db`** before any bulk write (the passes do it automatically).
+- **Never use `--from-logfile`** (parent paths + names with `;` → recursion). Import the directory directly.
 - **WMA format is stored as "Windows Media"** → query `format::Windows`, not `format:WMA`.
-- **Rate-limiting is NOT the cause of skips** (0 real 429/503 over 10k+ evaluations); skips = weak
-  match + quiet mode refusing to guess. No personal AcoustID key needed (non-commercial use is free).
+- **`incremental` remembers *skipped* folders too.** A weak-match folder left in source won't be re-tried by
+  the cron after you re-tag it — re-import it explicitly, drop it under a different path, or clear it from
+  beets' history (`$BEETSDIR/state.pickle`).
+- **Rate-limiting is NOT the cause of skips** (0 real 429/503 over 10k+ evaluations); skips = weak match
+  + quiet mode refusing to guess. No personal AcoustID key needed (non-commercial use is free).

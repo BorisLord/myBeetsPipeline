@@ -1,0 +1,32 @@
+# Tooling backbone (mirrors gemini-bridge): pinned tools + tasks.
+#   mise install   then   mise run test | lint | fix | audit
+[tools]
+python = "3.13"
+uv = "latest"
+ruff = "latest"
+
+[tasks.setup]
+description = "Install deps + the musicrec CLI (editable) and deploy config"
+run = "./setup.sh"
+
+[tasks.test]
+description = "Run the unit tests (stdlib unittest, no pytest)"
+run = "uv run python -m unittest discover -s tests -t . -v"
+
+[tasks.lint]
+description = "Lint musicrec + tests (ruff, gemini-bridge rule set)"
+run = "ruff check musicrec tests"
+
+[tasks.fix]
+description = "Apply ruff safe auto-fixes"
+run = "ruff check --fix musicrec tests"
+
+[tasks.typecheck]
+description = "Static type check (mypy)"
+run = "uv run --with mypy mypy musicrec --ignore-missing-imports"
+
+[tasks.audit]
+description = "Scan runtime deps for known vulnerabilities"
+# --skip-editable: don't audit musicrec itself (not on PyPI); --cache-dir: project-local cache (avoids the
+# stale global cachecontrol cache that spams 'deserialization failed' warnings).
+run = "uv run --with pip-audit pip-audit --skip-editable --cache-dir .pip-audit-cache --progress-spinner off"

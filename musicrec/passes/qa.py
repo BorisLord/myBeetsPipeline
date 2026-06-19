@@ -1,0 +1,148 @@
+"""Pass 4 -- technical QA (READ-ONLY audit; ends with a conditional ACTIONS summary).
+Same 8 sections the old 04-qa.sh had, now in Python, logged to musicrec.log. `scope` (a beets query, e.g.
+`added:<watermark>..`) narrows the audit to recent additions; empty scope = whole library.
+"""
+import re
+import shutil
+import subprocess
+from collections import Counter
+from pathlib import Path
+
+from .. import anomaly
+from ..beets import run_beet
+from ..logs import get_logger
+
+JUNK = re.compile(r"https?://|www\.|\.(com|net|org|tk|br)|\bEAC\b|\bLame\b|CDex|Easy CD-DA|Tagged By"
+                  r"|Encoded by|ripped by|Created with|meXPiracy|Autodesk|bandcamp|No Comment", re.I)
+
+
+def _lines(cfg, args):
+    _, text = run_beet(cfg, args, overlay="qa.yaml", passname="qa", echo_lines=False)
+    return [ln for ln in text.splitlines() if ln.strip()]
+
+
+def _leadnum(s):
+    m = re.match(r"\s*(\d+)", s)
+    return int(m.group(1)) if m else 0
+
+
+def _bucket(b):
+    if b < 128:
+        return "1. <128 low"
+    if b < 192:
+        return "2. 128-191 ok"
+    if b < 256:
+        return "3. 192-255 good"
+    if b < 321:
+        return "4. 256-320 very good"
+    return "5. 320+/lossless"
+
+
+def run(cfg, scope: str = "") -> int:
+    log = get_logger("qa")
+    sc = [scope] if scope else []
+
+    # 1. format breakdown
+    fc = Counter(f.strip() for f in _lines(cfg, ["ls", "-f", "$format", *sc]))
+    log.info("=== 1. format ===")
+    for fmt, n in fc.most_common():
+        log.info("  %5d %s", n, fmt)
+
+    # 2. bitrate breakdown ($bitrate is "Nkbps" -> leading number)
+    buckets = Counter(_bucket(_leadnum(b)) for b in _lines(cfg, ["ls", "-f", "$bitrate", *sc]))
+    log.info("=== 2. bitrate ===")
+    for label in sorted(buckets):
+        log.info("  %-22s %d", label, buckets[label])
+
+    # 3. WMA (stored as 'Windows Media' -> query format::Windows, NOT WMA)
+    wma = len(_lines(cfg, ["ls", "format::Windows", *sc]))
+    log.info("=== 3. WMA: %d track(s) ===", wma)
+    for x in sorted(set(_lines(cfg, ["ls", "-f", "$albumartist - $album", "format::Windows", *sc])))[:15]:
+        log.info("  %s", x)
+
+    # 4. low-quality lossy (<192k), excluding lossless
+    low = [x for x in _lines(cfg, ["ls", "-f", "$bitrate $format | $artist - $title", "bitrate:..191999", *sc])
+           if not re.search(r"FLAC|ALAC|WAV", x, re.I)]
+    log.info("=== 4. low-quality lossy <192k: %d ===", len(low))
+    for x in sorted(low, key=_leadnum)[:30]:
+        log.info("  %s", x)
+
+    # 5. duplicates (keys mb_trackid + mb_albumid, from config.yaml)
+    dups = _lines(cfg, ["duplicates", "-F", "-f", "$bitrate $format | $albumartist - $album - $title", *sc])
+    log.info("=== 5. duplicates: %d ===", len(dups))
+    for x in dups[:40]:
+        log.info("  %s", x)
+
+    # 6. integrity: beet bad (count ERROR only) + ffmpeg decode of other formats
+    bad = _lines(cfg, ["bad", *sc])
+    baderr = sum(1 for x in bad if "ERROR:" in x)
+    log.info("=== 6. integrity (beet bad): %d ERROR ===", baderr)
+    for x in bad:
+        if "ERROR:" in x:
+            log.info("  %s", x)
+    other_bad = 0
+    if shutil.which("ffmpeg"):
+        for p in _lines(cfg, ["ls", "-p", *sc]):
+            if Path(p).suffix.lower() in (".mp3", ".flac"):
+                continue
+            res = subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-i", p, "-f", "null", "-"],
+                                 capture_output=True, text=True)
+            if res.stderr.strip():
+                other_bad += 1
+                log.info("  BAD: %s", p)
+    log.info("=== 6b. other-format decode: %d bad ===", other_bad)
+
+    # 7. junk metadata (comments + encoder noise)
+    cmt = sum(1 for x in _lines(cfg, ["ls", "-f", "[$comments] | $artist - $title", "comments::.", *sc])
+              if JUNK.search(x))
+    enc = len(_lines(cfg, ["ls", "encoder::.", *sc]))
+    log.info("=== 7. junk metadata: %d junk comment(s), %d encoder noise ===", cmt, enc)
+
+    # 8. name/title anomalies -> TSV per family
+    fields = ("$id@@@$albumartist@@@$artist@@@$album@@@$title@@@$length@@@$bitrate"
+              "@@@$singleton@@@$comp@@@$albumtype@@@$mb_trackid")
+    _, tsv_text = run_beet(cfg, ["ls", "-f", fields, *sc], overlay="qa.yaml", passname="qa", echo_lines=False)
+    workdir = cfg.log_dir / "anomalies"
+    workdir.mkdir(parents=True, exist_ok=True)
+    tsv = workdir / "all-items.tsv"
+    tsv.write_text(tsv_text + "\n", encoding="utf-8")
+    counts = anomaly.scan(str(tsv), str(workdir), log)
+    anom = sum(counts.values())
+
+    # ACTIONS (only what was found)
+    log.info("=== ACTIONS (only what was found; BACK UP library.db before any zero/dedup) ===")
+    actions = []
+    if low:
+        actions.append(f"[quality] {len(low)} lossy <192k -> consider re-downloading (section 4)")
+    if enc:
+        actions.append(f"[tags]    {enc} encoder noise -> beet -c qa.yaml zero 'encoder::.'")
+    if cmt:
+        actions.append(f"[tags]    {cmt} junk comment(s) -> beet -c qa.yaml zero 'comments::.'")
+    if dups:
+        actions.append(f"[dups]    {len(dups)} duplicate track(s) -> review section 5, then: beet duplicates -m DUMP")
+    if wma:
+        actions.append(f"[format]  {wma} WMA -> re-encode for car/older players if needed")
+    if baderr + other_bad:
+        actions.append(f"[CORRUPT] {baderr + other_bad} file(s) failing integrity -> move to {cfg.dump} and re-rip")
+    if anom:
+        actions.append(f"[names]   {anom} name/title anomalies -> {workdir}/*.tsv (review)")
+    for a in actions:
+        log.info("  %s", a)
+    if not actions:
+        log.info("  -> nothing flagged: tags/quality/dups/integrity/names all clean.")
+    return 0
+
+
+def run_anomaly(cfg, scope: str = "") -> int:
+    """Just the read-only name/anomaly scan (section 8), standalone."""
+    log = get_logger("anomaly")
+    sc = [scope] if scope else []
+    fields = ("$id@@@$albumartist@@@$artist@@@$album@@@$title@@@$length@@@$bitrate"
+              "@@@$singleton@@@$comp@@@$albumtype@@@$mb_trackid")
+    _, tsv_text = run_beet(cfg, ["ls", "-f", fields, *sc], overlay="qa.yaml", passname="anomaly", echo_lines=False)
+    workdir = cfg.log_dir / "anomalies"
+    workdir.mkdir(parents=True, exist_ok=True)
+    tsv = workdir / "all-items.tsv"
+    tsv.write_text(tsv_text + "\n", encoding="utf-8")
+    anomaly.scan(str(tsv), str(workdir), log)
+    return 0

@@ -1,48 +1,67 @@
-#!/usr/bin/env python3
 """Carry an album's OFFICIAL sidecars (booklet/cover/back/inlay/scan... + .lrc lyrics) from the source
 folder to the matched album in the clean library. Works with import `move: yes`:
 
-  snapshot BEFORE import (source still has its audio) -> apply AFTER the move (copy the leftovers).
+  snapshot BEFORE import (source still has its audio) -> apply AFTER the move.
 
-Matching is by audio DURATION (robust to tag/name changes), captured pre-move from the source and
-compared to the clean album durations in beets' library.db. ffprobe (source) and beets/mutagen (db)
-disagree by a few seconds per track, so the match is TOLERANT: same track count + each sorted duration
-within TOL seconds. Embedded covers/lyrics already travel inside the files; this rescues loose files only.
-READ on source, MOVE into clean (no copy left in source); a file already present in clean is moved to the
-quarantine dir instead (never deleted). Durations via ffprobe (ships with ffmpeg) -> no extra Python deps.
+Matching is by audio DURATION (robust to tag/name changes): durations captured pre-move from the source
+(ffprobe) vs the clean album durations in beets' library.db. ffprobe and beets/mutagen disagree by a few
+seconds, so matching is TOLERANT: same track count + each sorted duration within TOL seconds. Embedded
+covers/lyrics already travel inside the files; this rescues loose files only. READ on source, MOVE into
+clean (no copy left in source); a file already present in clean (or a redundant cover) is moved to the
+quarantine dir instead (never deleted).
 
-Usage:
-  sidecars.py snapshot <source-dir> <snapshot.json>
-  sidecars.py apply    <snapshot.json> <library.db> <clean-root> [quarantine-dir] [--apply]   # dry-run unless --apply
-  sidecars.py prune-shells <source-dir> <quarantine-dir> [--apply]   # imported shells (no audio left) -> quarantine
+Importable functions (used by the import pass) -- each takes a `log`; falls back to the musicrec logger.
 """
-import sys, os, json, subprocess, shutil, sqlite3, re, glob
+import json
+import os
+import re
+import shutil
+import sqlite3
+import subprocess
 from collections import defaultdict
+from contextlib import closing, suppress
+from pathlib import Path
 
-AUDIO = {'.mp3', '.flac', '.m4a', '.m4b', '.aac', '.alac', '.ogg', '.oga', '.opus', '.wma',
-         '.wav', '.aif', '.aiff', '.ape', '.wv', '.mpc', '.tta', '.dsf', '.dff', '.mp2'}
-ART = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tif', '.tiff', '.webp', '.pdf'}
+from .logs import get_logger
+
+
+def safe_move(src, dst, log) -> bool:
+    """Move src -> dst; on failure log a clear error and return False (never a raw traceback)."""
+    try:
+        shutil.move(str(src), str(dst))
+    except OSError as e:
+        log.error("move failed: %s -> %s (%s)", src, dst, e)
+        return False
+    return True
+
+AUDIO = {".mp3", ".flac", ".m4a", ".m4b", ".aac", ".alac", ".ogg", ".oga", ".opus", ".wma",
+         ".wav", ".aif", ".aiff", ".ape", ".wv", ".mpc", ".tta", ".dsf", ".dff", ".mp2"}
+ART = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tif", ".tiff", ".webp", ".pdf"}
 # official sidecar basenames only (case-insensitive, optional trailing number): cover, booklet, back, cd2...
-OFFICIAL = re.compile(r'^(cover|front|folder|back|booklet|inlay|inside|sleeve|scan|scans|artwork|art|obi'
-                      r'|matrix|label|digipak|digipack|cd|disc|disk)([ _.\-]?\d+)?$', re.I)
+OFFICIAL = re.compile(r"^(cover|front|folder|back|booklet|inlay|inside|sleeve|scan|scans|artwork|art|obi"
+                      r"|matrix|label|digipak|digipack|cd|disc|disk)([ _.\-]?\d+)?$", re.I)
 TOL = 6   # seconds: per-track tolerance (ffprobe vs beets/mutagen durations differ by a few seconds)
-COVER = re.compile(r'^(cover|front|folder|artwork|art|sleeve|label)([ _.\-]?\d+)?$', re.I)  # "the cover" names
+COVER = re.compile(r"^(cover|front|folder|artwork|art|sleeve|label)([ _.\-]?\d+)?$", re.I)  # "the cover" names
+
+
+def _log(log):
+    return log if log is not None else get_logger("sidecars")
 
 
 def is_sidecar(fn):
-    base, ext = os.path.splitext(fn)
-    ext = ext.lower()
-    if ext == '.lrc':                       # lyrics: any name
+    p = Path(fn)
+    ext = p.suffix.lower()
+    if ext == ".lrc":                       # lyrics: any name
         return True
-    return ext in ART and bool(OFFICIAL.match(base))
+    return ext in ART and bool(OFFICIAL.match(p.stem))
 
 
 def dur(path):
     try:
-        out = subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration',
-                              '-of', 'csv=p=0', path], capture_output=True, text=True).stdout.strip()
-        return int(round(float(out))) if out else 0
-    except Exception:
+        out = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                              "-of", "csv=p=0", path], capture_output=True, text=True).stdout.strip()
+        return round(float(out)) if out else 0
+    except (ValueError, OSError):
         return 0
 
 
@@ -51,18 +70,19 @@ def durs_of(paths):
 
 
 def matches(a, b):                          # both sorted; same count + each pair within TOL
-    return len(a) == len(b) and all(abs(x - y) <= TOL for x, y in zip(a, b))
+    return len(a) == len(b) and all(abs(x - y) <= TOL for x, y in zip(a, b, strict=False))
 
 
-def snapshot(src, out):
+def snapshot(src, out, log=None):
+    log = _log(log)
     audio, side = defaultdict(list), defaultdict(list)
     for dp, _, files in os.walk(src):
         for fn in files:
-            ext = os.path.splitext(fn)[1].lower()
+            ext = Path(fn).suffix.lower()
             if ext in AUDIO:
-                audio[dp].append(os.path.join(dp, fn))
+                audio[dp].append(str(Path(dp) / fn))
             elif is_sidecar(fn):
-                side[dp].append(os.path.join(dp, fn))
+                side[dp].append(str(Path(dp) / fn))
     snap = []
     for d, files in side.items():
         if not audio.get(d):
@@ -70,85 +90,83 @@ def snapshot(src, out):
         ds = durs_of(audio[d])
         if ds:
             snap.append({"durs": ds, "files": sorted(files)})
-    json.dump(snap, open(out, "w", encoding="utf-8"), ensure_ascii=False)
-    print(f"sidecars: snapshot {len(snap)} album(s) with official sidecars", file=sys.stderr)
+    Path(out).write_text(json.dumps(snap, ensure_ascii=False), encoding="utf-8")
+    log.info("snapshot %d album(s) with official sidecars", len(snap))
+    return len(snap)
 
 
-def apply(snapfile, db, clean_root, dump, do_apply):
-    snap = json.load(open(snapfile, encoding="utf-8"))
+def apply(snapfile, db, clean_root, dump, do_apply, log=None):
+    log = _log(log)
+    snap = json.loads(Path(snapfile).read_text(encoding="utf-8"))
     if not snap:
-        print("sidecars: nothing to carry", file=sys.stderr)
+        log.info("nothing to carry")
         return
-    con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    with closing(sqlite3.connect(f"file:{db}?mode=ro", uri=True)) as con:
+        rows = con.execute("SELECT path, length FROM items").fetchall()
     dst = defaultdict(list)
-    for (path, length) in con.execute("SELECT path, length FROM items"):
-        p = path.decode('utf-8', 'surrogateescape') if isinstance(path, bytes) else path
-        if not os.path.isabs(p):                       # beets >=2.10 stores paths relative to the lib root
-            p = os.path.join(clean_root, p)
-        dst[os.path.dirname(p)].append(int(round(length or 0)))
-    moved = dumped = miss = ambig = 0
+    for (path, length) in rows:
+        p = path.decode("utf-8", "surrogateescape") if isinstance(path, bytes) else path
+        pp = Path(p)
+        if not pp.is_absolute():                       # beets >=2.10 stores paths relative to the lib root
+            pp = Path(clean_root) / pp
+        dst[pp.parent].append(round(length or 0))
+    moved = dumped = miss = ambig = stale = 0
     for ddir, lengths in dst.items():
+        if not ddir.is_dir():           # stale db: clean dir gone (moved/deleted) -> can't carry, skip (no crash)
+            stale += 1
+            continue
         dd = sorted(x for x in lengths if x > 0)
         cands = [e for e in snap if matches(e["durs"], dd)]
         if len(cands) != 1:
             ambig += len(cands) > 1
             miss += len(cands) == 0
             continue
-        has_cover = bool(glob.glob(os.path.join(ddir, "cover.*")))
+        has_cover = bool(list(ddir.glob("cover.*")))
         for f in cands[0]["files"]:
-            if not os.path.exists(f):
+            fp = Path(f)
+            if not fp.exists():
                 continue
-            base, ext = os.path.splitext(os.path.basename(f))
-            dest = os.path.join(ddir, os.path.basename(f))
-            redundant = ext.lower() in ART and bool(COVER.match(base)) and has_cover   # cover already in clean
-            if not redundant and not os.path.exists(dest):     # free slot -> MOVE into the album
+            dest = ddir / fp.name
+            redundant = fp.suffix.lower() in ART and bool(COVER.match(fp.stem)) and has_cover  # cover already there
+            if not redundant and not dest.exists():        # free slot -> MOVE into the album
+                if not do_apply or safe_move(fp, dest, log):
+                    moved += 1
+                    log.info("%s %s -> %s", "MOVE" if do_apply else "DRY ", fp.name, ddir)
+            elif dump:                                     # dup / redundant cover -> quarantine/<source-folder>/
+                qd = Path(dump) / fp.parent.name
                 if do_apply:
-                    shutil.move(f, dest)
-                moved += 1
-                print(f"{'MOVE' if do_apply else 'DRY '} {os.path.basename(f)} -> {ddir}")
-            elif dump:                                         # dup / redundant cover -> quarantine/<source-folder>/ (never delete)
-                qd = os.path.join(dump, os.path.basename(os.path.dirname(f)))
-                qdest = os.path.join(qd, os.path.basename(f))
-                if do_apply:
-                    os.makedirs(qd, exist_ok=True)
-                    shutil.move(f, qdest)
-                dumped += 1
-                print(f"{'DUMP' if do_apply else 'DRY '} {os.path.basename(f)} -> {qd}/")
-    print(f"sidecars: {'moved' if do_apply else 'would move'} {moved} file(s), {dumped} dup(s) -> quarantine; "
-          f"{miss} clean album(s) unmatched, {ambig} ambiguous", file=sys.stderr)
+                    qd.mkdir(parents=True, exist_ok=True)
+                if not do_apply or safe_move(fp, qd / fp.name, log):
+                    dumped += 1
+                    log.info("%s %s -> %s/", "DUMP" if do_apply else "DRY ", fp.name, qd)
+    log.info("%s %d file(s), %d dup(s) -> quarantine; %d unmatched, %d ambiguous, %d stale (clean dir gone)",
+             "moved" if do_apply else "would move", moved, dumped, miss, ambig, stale)
 
 
-def prune_shells(src, dump, do_apply):
-    """Imported-album shells (leaf source dirs with files but NO audio left) -> quarantine, whole folder."""
+def prune_shells(src, dump, do_apply, log=None):
+    """Imported-album shells (leaf source dirs with files but NO audio left) -> quarantine, one folder/album."""
+    log = _log(log)
     targets = [dp for dp, dirs, files in os.walk(src)
-               if dp != src and not dirs and files
-               and not any(os.path.splitext(f)[1].lower() in AUDIO for f in files)]
+               if dp != str(src) and not dirs and files
+               and not any(Path(f).suffix.lower() in AUDIO for f in files)]
     moved = 0
     for dp in targets:
-        if not os.path.isdir(dp):
+        dpath = Path(dp)
+        if not dpath.is_dir():
             continue
-        dest = os.path.join(dump, os.path.basename(dp))
-        i = 1
-        while os.path.exists(dest):
-            i += 1
-            dest = os.path.join(dump, f"{os.path.basename(dp)} ({i})")
+        dest = Path(dump) / dpath.name              # one quarantine folder per source album
         if do_apply:
-            os.makedirs(dump, exist_ok=True)
-            shutil.move(dp, dest)
+            dest.mkdir(parents=True, exist_ok=True)  # may already exist (a redundant cover dumped here by apply)
+            for child in dpath.iterdir():            # -> merge the leftovers in, don't spawn a "(2)" sibling
+                d = dest / child.name
+                i = 1
+                while d.exists():
+                    i += 1
+                    d = dest / f"{child.stem} ({i}){child.suffix}"
+                safe_move(child, d, log)
+            with suppress(OSError):
+                dpath.rmdir()                        # empty now (unless a move failed -> shell left in place)
         moved += 1
-        print(f"{'SHELL' if do_apply else 'DRY '} {os.path.basename(dp)}/ -> {dump}")
-    print(f"sidecars: {moved} imported shell(s) -> quarantine", file=sys.stderr)
-
-
-if __name__ == "__main__":
-    if len(sys.argv) >= 4 and sys.argv[1] == "snapshot":
-        snapshot(sys.argv[2], sys.argv[3])
-    elif sys.argv[1] == "apply" and len([a for a in sys.argv[2:] if a != "--apply"]) >= 3:
-        a = [x for x in sys.argv[2:] if x != "--apply"]
-        apply(a[0], a[1], a[2], a[3] if len(a) > 3 else "", "--apply" in sys.argv)
-    elif sys.argv[1] == "prune-shells" and len([a for a in sys.argv[2:] if a != "--apply"]) >= 2:
-        a = [x for x in sys.argv[2:] if x != "--apply"]
-        prune_shells(a[0], a[1], "--apply" in sys.argv)
-    else:
-        print(__doc__)
-        sys.exit(1)
+        log.info("%s %s/ -> %s", "SHELL" if do_apply else "DRY ", dpath.name, dest)
+    log.info("%d imported shell(s) -> quarantine", moved)
+    return moved
