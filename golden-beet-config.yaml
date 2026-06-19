@@ -1,0 +1,126 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  THE GOLDEN BEET CONFIG  —  an opinionated, battle-tested beets config
+# ─────────────────────────────────────────────────────────────────────────────
+# A drop-in `~/.config/beets/config.yaml` for ONE job: turn a chaotic, mis-tagged
+# music dump into a clean ALBUM library you can serve with any player (Navidrome,
+# Jellyfin, Plex, any Subsonic/DLNA). Like a golden golangci-lint config, it
+# encodes choices most people only learn the hard way — each with the *why*.
+#
+# PHILOSOPHY (what makes it opinionated):
+#   • Album mode + AcoustID fingerprint: identify by CONTENT, not by file/folder names.
+#   • quiet + quiet_fallback: skip  -> auto-accept ONLY strong matches, never guess.
+#   • Only COMPLETE, strong albums are kept; weak/partial ones are left untouched
+#     for manual curation (max_rec penalises missing/extra tracks).
+#   • Enrichment runs NATIVELY during `beet import` (auto: yes): art, genres,
+#     ReplayGain, ftintitle, scrub — no separate passes.
+#   • Never lose data: matched albums MOVE to `directory:`, the rest stay put.
+#
+# HOW TO USE (standalone): copy to ~/.config/beets/config.yaml, set `directory:`,
+#   `pip install beets[chroma,fetchart,lastgenre]`, install fpcalc + ffmpeg, then
+#   `beet import /path/to/messy/music`.
+#
+# CAVEAT — this file is the *config*; the full recovery tool (golden-beet-config /
+#   `gbc`) adds the orchestration a config alone can't express: pre-import dedup
+#   (keep best bitrate), carrying official sidecars into the album, a read-only QA
+#   audit (integrity, lossy<192k, junk metadata, RIFF-in-.mp3 detection), and
+#   on-demand format conversion (WMA→AAC, WAV/AIFF→FLAC). Config gets you ~80%; the
+#   wrapper is the rest.
+# ─────────────────────────────────────────────────────────────────────────────
+
+directory: ~/Music/clean        # <- SET THIS: where matched albums are filed (your clean library)
+# library: ~/.config/beets/library.db   # default; back it up before any bulk modify/move
+
+# `musicbrainz` MUST be listed -- it is a separate metadata-source plugin; without it `chroma`
+# yields NO MusicBrainz candidates and fingerprint matching silently finds nothing.
+# Everything except duplicates/unimported/zero/missing/mbsync/bareasc runs automatically on import.
+plugins: musicbrainz chroma fetchart embedart lastgenre replaygain scrub ftintitle duplicates unimported zero missing mbsync bareasc
+
+import:
+  move: yes              # matched albums MOVE to `directory:`; unmatched files stay where they are (curation pile)
+  copy: no               # set copy:yes instead if you must keep the source untouched
+  write: yes             # write clean tags back into the files
+  quiet: yes             # no prompts
+  quiet_fallback: skip   # in quiet mode, anything not STRONG is skipped (never guessed) -- the key safety net
+  timid: no
+  incremental: yes       # remember processed folders (incl. skipped) -> re-runs only touch new drops
+  resume: no
+  duplicate_action: skip # an album already in the library -> skip (no duplicate); review manually
+  log: beets-import.log  # beets' own match/skip decisions (separate from any app log)
+ignore_hidden: yes
+original_date: yes       # write the ORIGINAL release year -> reissues/remasters get the true year, not the pressing
+
+# Feed existing tags into the MusicBrainz search so it picks the RIGHT release (=> richer, accurate metadata).
+musicbrainz:
+  extra_tags: [alias, barcode, catalognum, country, label, media, tracks, year]
+  genres: yes            # MusicBrainz genres (primary, vote-sorted); lastgenre (force:no) only fills the gaps
+
+match:
+  strong_rec_thresh: 0.15   # distance < 0.15 = "strong" => auto-accepted. Raise to be stricter, lower to accept more.
+  preferred:
+    countries: ['US', 'GB|UK']        # ADJUST TO YOUR LOCALE (e.g. add 'FR','DE'...) -- only a soft penalty otherwise
+    media: ['Digital Media|File', 'CD']
+    original_year: yes
+  max_rec:
+    missing_tracks: low     # an album missing tracks can't be "strong" -> incomplete albums are skipped
+    unmatched_tracks: low   # ditto for extra/unmatched tracks
+
+# Skipped during import: hidden + video files + common junk. Append your own quarantine/junk folder names.
+ignore: ['.*', '*.mp4', '*.mov', '*.avi', '*.mkv', '*.m4v', '*.wmv', '*.flv', '*.ts', '*.mpg', '*.mpeg', '*.webm',
+         'desktop.ini', 'Thumbs.db', 'thumbs.db', '*.url', '@eaDir', '_', 'Unknown']
+
+# Sanitise characters that break filesystems/players in the generated paths.
+replace:
+  '\s*:\s*': ' - '
+  '[<>\?\*\|]': _
+  '\"': _
+  '[\\/]': _
+  '^\.': _
+  '\.$': _
+  '[\x00-\x1f]': _
+  '^-': _
+  '\s+$': ''
+  '^\s+': ''
+
+duplicates:
+  keys: mb_trackid mb_albumid
+
+# Clean junk fields DURING import. `encoder` (no pattern) is ALWAYS blanked (pure tech noise);
+# `comments`/`grouping` are blanked ONLY when a junk pattern matches -> a real note ("Live at…") is KEPT.
+zero:
+  auto: yes
+  update_database: yes
+  fields: comments encoder grouping
+  comments: ['^Track \d+$', '^0$', '(?i)^no comment$', '(?i)https?://', '(?i)www\.', '(?i)\.(com|net|org|tk|br)\b', '(?i)\bEAC\b', '(?i)Exact Audio Copy', '(?i)\bLame\b', '(?i)CDex', '(?i)Easy CD-DA', '(?i)dBpoweramp', '(?i)AudioGrabber', '(?i)fre:ac', '(?i)\bGrip\b', '(?i)Tagged By', '(?i)Encoded by', '(?i)rip(ped)? (by|with)', '(?i)Created with', 'meXPiracy', '(?i)Autodesk', '(?i)bandcamp', '(?i)torrent', '(?i)blogspot']
+  grouping:  ['(?i)https?://', '(?i)www\.', '(?i)\.(com|net|org|tk|br)\b', '(?i)\bEAC\b', '(?i)Exact Audio Copy', '(?i)\bLame\b', '(?i)CDex', '(?i)dBpoweramp', '(?i)rip(ped)? (by|with)', 'meXPiracy', '(?i)bandcamp', '(?i)torrent', '(?i)blogspot']
+
+unimported:
+  ignore_extensions: jpg png pdf log cue m3u nfo txt
+
+# Compilations keep their comp=1 TAG but are filed under $albumartist (Various Artists -> "Various Artists/<album>/"),
+# NOT in a separate Compilations/ tree. `comp:` MUST be set explicitly to = default: — beets' BUILT-IN default for
+# comp: is 'Compilations/...', so merely omitting it does NOT work. Multi-disc uses continuous numbering (no $disc
+# in the path) so 2xCD merges into one folder with no track-number collisions.
+paths:
+  # VARIOUS-ARTISTS soundtracks -> Soundtracks/; a single-artist OST (Purple Rain…) stays under its artist via default:.
+  comp:1 albumtype:soundtrack: 'Soundtracks/$album%aunique{}/%if{$track,$track }$artist - $title'
+  default:   '$albumartist/$album%if{$year, ($year)}%aunique{}/%if{$track,$track - }$title'
+  comp:      '$albumartist/$album%aunique{}/%if{$track,$track }$artist - $title'
+  singleton: '%if{$album,$albumartist/$album%aunique{}/%if{$track,$track - }$title,$artist/$title%sunique{}}'
+
+# ── Native enrichment, all DURING `beet import` (auto: yes) ──
+chroma: {auto: yes}      # AcoustID fingerprint matching (needs fpcalc / Chromaprint)
+scrub: {auto: yes}       # strip foreign/garbage tags on every write. NOTE: a WMA/ASF file with a broken embedded
+                         # image (mime=None) crashes scrub -> strip the image first (mutagen) before importing it.
+fetchart:
+  auto: yes              # cover art: local folder image first, then web sources
+  maxwidth: 1000
+  minwidth: 300
+  quality: 75
+  store_source: yes
+  fanarttv_key: REPLACE_ME   # OPTIONAL online-art keys; leave REPLACE_ME to skip those sources (never commit keys)
+  lastfm_key: REPLACE_ME
+  sources: [filesystem, coverart, fanarttv, itunes, amazon, lastfm, albumart]
+embedart: {auto: yes, maxwidth: 500, quality: 70, ifempty: no}   # embed the fetched art into the files
+lastgenre: {auto: yes, source: album, count: 3, force: no, canonical: yes, whitelist: yes, prefer_specific: yes}
+replaygain: {auto: yes, backend: ffmpeg, overwrite: yes}         # EBU R128 loudness, computed on import (needs ffmpeg)
+ui: {color: no}

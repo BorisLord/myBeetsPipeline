@@ -16,6 +16,29 @@ the leftover pile to curate later (e.g. Picard). Empty shells of moved albums ar
 
 ---
 
+## Golden beet config
+
+[`golden-beet-config.yaml`](golden-beet-config.yaml) is the heart of this project: an **opinionated,
+battle-tested beets config** — think *golden golangci-lint config*, but for [beets](https://beets.io). It
+encodes the choices that turn a chaotic dump into a clean **album** library, each documented with the *why*:
+
+- **Album mode + AcoustID** — identify by audio content, not by file/folder names.
+- **`quiet` + `quiet_fallback: skip`** — auto-accept only *strong* matches; never guess.
+- **Complete albums only** — missing/extra tracks can't be "strong" (`max_rec`), so partial rips are left
+  for manual curation rather than mis-filed.
+- **Native enrichment on import** (`auto: yes`) — cover art, MusicBrainz genres, ReplayGain (R128),
+  ftintitle, scrub.
+- **`zero` junk cleaning** — blanks `encoder` always, and junk `comments`/`grouping` (URLs, "ripped by",
+  ripper names) only on a pattern match, so a real note ("Live at…") is kept.
+- **Sane paths** — `Various Artists/` for comps, `Soundtracks/` for VA OSTs, continuous numbering for multi-disc.
+
+Use it **standalone** (copy to `~/.config/beets/config.yaml`, set `directory:`) for ~80% of the value. The
+wrapper tool in this repo adds the orchestration a config can't express: pre-import dedup (keep best bitrate),
+carrying official sidecars into the album, a read-only QA audit (integrity, lossy&lt;192k, junk metadata,
+RIFF-in-`.mp3` detection), and on-demand format conversion (WMA→AAC, WAV/AIFF→FLAC).
+
+---
+
 ## Quick start
 
 ```bash
