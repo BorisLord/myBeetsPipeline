@@ -1,16 +1,8 @@
-"""Carry an album's OFFICIAL sidecars (booklet/cover/back/inlay/scan... + .lrc lyrics) from the source
-folder to the matched album in the clean library. Works with import `move: yes`:
-
-  snapshot BEFORE import (source still has its audio) -> apply AFTER the move.
-
-Matching is by audio DURATION (robust to tag/name changes): durations captured pre-move from the source
-(ffprobe) vs the clean album durations in beets' library.db. ffprobe and beets/mutagen disagree by a few
-seconds, so matching is TOLERANT: same track count + each sorted duration within TOL seconds. Embedded
-covers/lyrics already travel inside the files; this rescues loose files only. READ on source, MOVE into
-clean (no copy left in source); a file already present in clean (or a redundant cover) is moved to the
-quarantine dir instead (never deleted).
-
-Importable functions (used by the import pass) -- each takes a `log`; falls back to the gbc logger.
+"""Carry an album's OFFICIAL sidecars (booklet/cover/back/scan + .lrc) from the source folder into the
+matched album in the clean library. snapshot BEFORE import (source still has its audio) -> apply AFTER the
+move. Matching is by audio DURATION (robust to tag/name changes): source durations (ffprobe) vs clean album
+lengths in beets' db, tolerant within TOL seconds. A file already in clean, or a redundant cover, is moved
+to quarantine instead -- never deleted. Each function takes a `log` (falls back to the gbc logger).
 """
 import json
 import os

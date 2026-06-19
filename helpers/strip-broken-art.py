@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Strip the BROKEN embedded image (mime=None) from files that would crash scrub.
-# mf.images=[] = empty list -> nothing to serialize -> no crash. Art comes back via fetchart (02-enrich).
+# mf.images=[] = empty list -> nothing to serialize -> no crash. Art comes back via fetchart (native, on import).
 # Optional arg = limit (to test on N files). No arg = all.
 import subprocess, mediafile, sys, os
 root = os.environ.get('ROOT', os.environ.get('MUSIC_SRC', os.path.expanduser('~/Music/beetsPipeline/source')))

@@ -1,6 +1,6 @@
 # qa.yaml overlay (verification/QA). plugins = strict minimum: duplicates + badfiles + zero.
 # badfiles provides 'beet bad' (mp3val for mp3, flac --test for flac; other formats not covered) ->
-# 04-qa.sh section 6b deep-checks the rest (m4a/wav/wma/ogg/opus/ape...) with an ffmpeg full decode.
+# the qa pass deep-checks the rest (m4a/wav/wma/ogg/opus/ape...) with an ffmpeg full decode.
 plugins: duplicates badfiles zero
 badfiles:
   check_on_import: no

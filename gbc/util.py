@@ -9,7 +9,7 @@ from .beets import run_beet
 
 
 def backup_db(cfg, tag: str, log) -> None:
-    """Safeguard copy of library.db before any mass write (kept, like the old scripts)."""
+    """Safeguard copy of library.db before any mass write."""
     lib = cfg.library
     if lib.exists():
         stamp = datetime.now().strftime("%Y-%m-%d-%H%M")

@@ -1,8 +1,7 @@
 # CLAUDE.md — golden-beet-config (operational brief)
 
-Always cehck offcial documentation.
-Every features need to be tested
-Everything need to be logic and well coded with good practice
+Always check the official documentation. Every feature must be tested. Keep everything logical and
+well-coded (good practices).
 
 Full docs: **README.md**. These are the rules so past incidents aren't repeated.
 
@@ -24,7 +23,7 @@ watermark (scopes qa) in `state.py`. `setup.sh` is the only bash (deps + `uv too
 
 - **Logs: one file** `$LOG_DIR/gbc.log`, append-only, every line tagged `[pass]` + run id — same for
   `run` and `cron` (never per-pass files). beets' own decisions stay in `import-decisions.log`.
-- **Incremental:** enrich/replaygain/qa scope to items added since the last successful run (watermark);
+- **Incremental:** qa scopes to items added since the last successful run (watermark);
   `--all` reprocesses everything. import is incremental via beets (`incremental: yes`).
 - **Tooling:** `mise run test|lint|fix|audit`; tests are stdlib **unittest** (no pytest), no network.
 
@@ -57,8 +56,8 @@ Paths come from `config.env` (copy of `config.env.example`, gitignored) — use 
 
 ## Verified facts (do not re-debate)
 
-- **Rate-limiting is NOT the cause of skips** (0 real 429/503 over 10k+ evaluations); skips = weak match
-  - quiet mode refusing to guess. No personal AcoustID key needed (non-commercial use is free).
+- **Rate-limiting is NOT the cause of skips** (0 real 429/503 over 10k+ evaluations); skips = weak match +
+  quiet mode refusing to guess. No personal AcoustID key needed (non-commercial use is free).
 - **WMA** format is stored as "Windows Media" → query `format::Windows`, not `format:WMA`.
 
 ## Secrets

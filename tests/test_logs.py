@@ -23,10 +23,10 @@ class TestLogs(Base):
     def test_single_tagged_file_and_append(self):
         logs.configure(self.tmp, "ab12", console=False)
         logs.get_logger("import").info("hello world")
-        logs.get_logger("enrich").info("second pass")
+        logs.get_logger("dedup").info("second pass")
         text = (self.tmp / "gbc.log").read_text()
         self.assertIn("run=ab12  [import]  INFO  hello world", text)
-        self.assertIn("run=ab12  [enrich]  INFO  second pass", text)
+        self.assertIn("run=ab12  [dedup]  INFO  second pass", text)
         self.assertEqual(list(self.tmp.glob("*.log")), [self.tmp / "gbc.log"])  # NOT one file per pass
 
         _reset()                                      # a later run APPENDS (never truncates)
