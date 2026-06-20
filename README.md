@@ -31,22 +31,24 @@ value. The `gbc` CLI adds the rest (below).
 ```bash
 git clone <repo-url> && cd golden-beets-config
 ./setup.sh     # checks deps, installs beets + the gbc CLI (via uv), deploys the config (+ optional cron)
-gbc run        # run the pipeline: import → qa
+gbc run        # run the pipeline: import → verify → acousticbrainz → qa → reclaim
 ```
 
 No config needed: by default everything lives under `~/Music/beetsPipeline/` (`source/`, `clean/`,
-`quarantine/`, `logs/`). Drop **album folders** in `source/` — matched albums **move** to `clean/`, the rest
-stay in `source/` to curate. For other paths, edit `config.env` (created by setup) and re-run `./setup.sh`.
+`quarantine/`, `logs/`). Drop **album folders** in `source/` — matched albums go to `clean/` (**moved** or
+**copied** per beets `import.move`/`copy`), the rest stay in `source/` to curate. For other paths, edit
+`config.env` (created by setup) and re-run `./setup.sh`.
 
 ## Commands
 
 ```
-gbc run [--all] [--reimport]   pipeline now (import → verify → acousticbrainz → qa); --all re-checks all, --reimport re-tries seen folders
+gbc run [--all] [--reimport]   pipeline now (import → verify → acousticbrainz → qa → reclaim); --all re-checks all, --reimport re-tries seen folders
 gbc inbox               cron door: import a fresh drop if anything is new, then the pipeline
 gbc import [SOURCE] [--reimport]   album-match import only (--reimport re-tries already-seen folders)
 gbc qa [QUERY]          read-only technical audit + anomaly scan
 gbc anomaly [QUERY]     read-only name/anomaly scan only
 gbc verify [QUERY]      quarantine imposter tracks (audio ≠ tagged recording) via AcoustID
+gbc reclaim             copy-mode: move fully-verified source albums to quarantine (per album, all tracks ok)
 gbc acousticbrainz [QUERY]   fetch BPM/key/mood metadata from AcousticBrainz (network-only; bpm+key → file tags)
 gbc convert             normalise formats in the clean lib: WMA→AAC, WAV/AIFF→FLAC (originals → quarantine)
 gbc init [--cron]       (re)deploy config + beets overlays (+ schedule cron)
@@ -59,8 +61,18 @@ the first run has no watermark and covers the whole library.
 
 ## How it works
 
-`gbc run` = **import → verify → acousticbrainz → qa** (`library.db` is backed up first). `run` (manual)
-and `inbox` (cron) call the **same** pipeline — only the trigger and scope differ.
+`gbc run` = **import → verify → acousticbrainz → qa → reclaim** (`library.db` is backed up first). `run`
+(manual) and `inbox` (cron) call the **same** pipeline — only the trigger and scope differ.
+
+**gbc follows the beets import op.** Whether the source is consumed or kept is beets' `import.move`/`copy`
+decision, read from `beet config` — gbc adapts (`gbc/beetscfg.py`):
+
+- **move** (or `copy`+`delete`) — source is the leftover pile: dedup, sidecars and shell-pruning run (below).
+- **copy / reflink / hardlink** (or symlink/in-place) — source stays **read-only**: dedup/sidecars/pruning
+  are all skipped. The **reclaim** pass then drains the source safely: per album, once **every** track has a
+  clean copy positively verified by AcoustID (`verify` = `ok`), the whole source folder is moved to
+  quarantine (`$MUSIC_DUMP`, never deleted). Partially-matched or any-track-unverified albums stay intact in
+  source. (Symlink/in-place never reclaim — clean would dangle.)
 
 **Import** — per source folder:
 
@@ -70,11 +82,12 @@ and `inbox` (cron) call the **same** pipeline — only the trigger and scope dif
    (`max_rec`) so only **complete** albums score strongly.
 4. **Decide** — `quiet` + `quiet_fallback: skip`: strong matches auto-accept, everything else is **skipped**
    (never guessed; left in `source/` to curate).
-5. **Act** — accepted albums **move** to the clean library, reorganised by the path templates and scrubbed,
-   with native enrichment (art, genres, ReplayGain, ftintitle) applied during the import. `gbc` adds
-   **dedup** before (drop duplicate audio, keep best bitrate) and carries official sidecars
-   (booklet/back/scan/`.lrc`) into the album after; empty source shells are pruned. A dup already in clean
-   goes to quarantine, never deleted.
+5. **Act** — accepted albums land in the clean library (moved or copied per `import.move`/`copy`),
+   reorganised by the path templates and scrubbed, with native enrichment (art, genres, ReplayGain,
+   ftintitle) applied during the import. **In move mode only**, `gbc` adds **dedup** before (drop duplicate
+   audio, keep best bitrate) and carries official sidecars (booklet/back/scan/`.lrc`) into the album after;
+   empty source shells are pruned. **In copy mode the source is untouched** (sidecars stay with it) — see
+   reclaim below. A dup already in clean goes to quarantine, never deleted.
 
 **Verify** — re-fingerprints each accepted track and treats it as an **imposter** (a file with the right
 title/duration/tags but whose audio isn't the matched recording) only when AcoustID is conclusive that the
@@ -86,6 +99,12 @@ album-mode blind spot: `chroma` gives no penalty to a track it can't identify.)
 **QA** (read-only) — format/bitrate, WMA, duplicates, integrity (`beet bad` + ffmpeg decode + RIFF-in-`.mp3`
 detection), junk metadata, and a name/anomaly scan; ends with a conditional **ACTIONS** summary. Overlay:
 `beets/qa.yaml`.
+
+**Reclaim** (copy/reflink/hardlink mode only) — drains the source once each track is proven safe. Per source
+album, when **every** track has a clean copy that `verify` confirmed `ok`, the whole folder is moved to
+`$MUSIC_DUMP` (never deleted). clean↔source correlation reuses the `sidecars` duration-multiset match; a
+partially-matched, any-track-unverified, multi-disc or otherwise ambiguous album is left intact in source.
+No-op in move/delete mode (beets already consumed the source) and in symlink/in-place mode (clean would dangle).
 
 **Logs** — **one** file, `$LOG_DIR/gbc.log`, append-only, every line tagged with the pass + a run id
 (identical whether triggered by `run` or `inbox`). beets' own match/skip decisions stay in

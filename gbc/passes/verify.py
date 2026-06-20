@@ -73,9 +73,17 @@ def _official_known(mbid):
     return None
 
 
+def _write_verdicts(cfg: Config, verdicts: dict) -> None:
+    """Persist per-clean-path verdicts for the reclaim pass. Rewritten EACH run (empty until proven), so a
+    crash or a skipped verify leaves reclaim nothing stale to trust."""
+    cfg.beetsdir.mkdir(parents=True, exist_ok=True)
+    (cfg.beetsdir / "gbc-verify-verdicts.json").write_text(json.dumps(verdicts), encoding="utf-8")
+
+
 def run(cfg: Config, scope="") -> int:
     """Flag imposter tracks among items added in `scope` (whole library if empty). Returns the imposter count."""
     log = get_logger("verify")
+    _write_verdicts(cfg, {})                                   # fresh slate: reclaim trusts only this run's verdicts
     if not _acoustid_available():
         log.warning("pyacoustid not available -> fingerprint verification skipped")
         return 0
@@ -91,6 +99,7 @@ def run(cfg: Config, scope="") -> int:
         cache = {}
 
     moved, checked, incon, backed = [], 0, 0, False
+    verdicts: dict[str, str] = {}
     for path, mbid in rows:
         try:
             st = Path(path).stat()
@@ -113,6 +122,7 @@ def run(cfg: Config, scope="") -> int:
                 verdict = "imposter" if known else "rare"      # rare = file & official both unknown -> genuine, kept
             cache[key] = verdict
             checked += 1
+        verdicts[path] = verdict                               # conclusive verdict (ok/rare/imposter) -> reclaim input
         if verdict == "imposter":                              # conclusive imposter -> quarantine (never deleted)
             if not backed:
                 backup_db(cfg, "verify", log)
@@ -132,6 +142,7 @@ def run(cfg: Config, scope="") -> int:
     cfg.beetsdir.mkdir(parents=True, exist_ok=True)
     with cpath.open("w", encoding="utf-8") as fh:
         json.dump(cache, fh)
+    _write_verdicts(cfg, verdicts)                             # genuine ("ok") paths drive the reclaim pass
     log.info("=== fingerprint verify: %d new check(s), %d imposter(s) quarantined, %d inconclusive ===",
              checked, len(moved), incon)
     if moved:

@@ -6,6 +6,7 @@
   gbc qa [QUERY]         read-only technical audit + anomaly scan
   gbc anomaly [QUERY]    read-only name/anomaly scan only
   gbc verify [QUERY]     quarantine imposter tracks (audio != tagged recording) via AcoustID
+  gbc reclaim            copy-mode: move fully-verified source albums to quarantine (per album)
   gbc acousticbrainz [QUERY]  fetch BPM/key/mood metadata from AcousticBrainz (network-only)
   gbc convert            normalise formats in the clean lib (WMA->AAC, WAV/AIFF->FLAC; originals->quarantine)
   gbc init [--cron]      deploy config + beets configs (+ optional cron)
@@ -18,7 +19,7 @@ from . import admin
 from . import config as configmod
 from .lock import import_lock
 from .logs import configure
-from .passes import acousticbrainz, convert, import_, inbox, pipeline, qa, verify
+from .passes import acousticbrainz, convert, import_, inbox, pipeline, qa, reclaim, verify
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -37,6 +38,7 @@ def _build_parser() -> argparse.ArgumentParser:
     pa.add_argument("query", nargs="?", default="", help="scope query (default: whole library)")
     pv = sub.add_parser("verify", help="quarantine imposter tracks (audio != tagged recording) via AcoustID")
     pv.add_argument("query", nargs="?", default="", help="scope query (default: whole library)")
+    sub.add_parser("reclaim", help="copy-mode: move fully-verified source albums to quarantine (per album)")
     pab = sub.add_parser("acousticbrainz", help="fetch BPM/key/mood metadata from AcousticBrainz")
     pab.add_argument("query", nargs="?", default="", help="scope query (default: whole library)")
     sub.add_parser("convert", help="normalise formats (WMA->AAC, WAV/AIFF->FLAC; originals -> quarantine)")
@@ -66,6 +68,10 @@ def main(argv=None) -> int:
         return qa.run_anomaly(cfg, scope=args.query)
     if args.cmd == "verify":
         return verify.run(cfg, scope=args.query)
+    if args.cmd == "reclaim":
+        with import_lock(cfg, blocking=True):
+            reclaim.run(cfg)
+            return 0
     if args.cmd == "acousticbrainz":
         return acousticbrainz.run(cfg, scope=args.query)
     if args.cmd == "convert":

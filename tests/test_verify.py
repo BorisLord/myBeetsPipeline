@@ -31,6 +31,11 @@ class TestVerify(Base):
         self.assertFalse((self.tmp / "b.m4a").exists())           # imposter moved out of "clean"
         for stem in ("a", "c", "d"):
             self.assertTrue((self.tmp / f"{stem}.m4a").exists())  # genuine / inconclusive kept
+        verd = json.loads((self.cfg.beetsdir / "gbc-verify-verdicts.json").read_text())
+        self.assertEqual(verd[str(self.tmp / "a.m4a")], "ok")     # reclaim input: genuine
+        self.assertEqual(verd[str(self.tmp / "b.m4a")], "imposter")
+        self.assertEqual(verd[str(self.tmp / "d.m4a")], "rare")
+        self.assertNotIn(str(self.tmp / "c.m4a"), verd)           # inconclusive -> no verdict recorded
 
     def test_skips_cleanly_without_pyacoustid(self):
         with mock.patch.object(verify, "_acoustid_available", lambda: False):

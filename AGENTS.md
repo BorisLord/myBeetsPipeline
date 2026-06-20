@@ -14,13 +14,23 @@ complete, strong albums are kept — loose singletons stay parked in the source 
 ## Architecture (one core, several doors)
 
 `gbc run` (manual) and `gbc inbox` (cron, on drop) call the **same** pipeline
-(`gbc/passes/pipeline.py`: **import → verify → acousticbrainz → qa**). beets does art/genres/replaygain/scrub/ftintitle
+(`gbc/passes/pipeline.py`: **import → verify → acousticbrainz → qa → reclaim**). beets does art/genres/replaygain/scrub/ftintitle
 **natively during `beet import`** (`auto: yes` in `config.yaml`); gbc only adds **dedup** (before
 import) + **sidecars** (after) + **verify** (AcoustID imposter -> quarantine) + **acousticbrainz**
-(network-only BPM/key/mood enrichment) + **qa/anomaly** (audit). Passes in `gbc/passes/`; beets driven
+(network-only BPM/key/mood enrichment) + **qa/anomaly** (audit) + **reclaim**. Passes in `gbc/passes/`; beets driven
 through `beets.run_beet` (captures stdout **and stderr** — beet logs its `--pretend` plan to stderr);
 config in `config.py`; single logger in `logs.py`; import lock (filelock) in `lock.py`; incremental
 watermark (scopes qa) in `state.py`. `setup.sh` is the only bash (deps + `uv tool install --editable .` + `gbc init`).
+
+- **gbc adapts to the EFFECTIVE beets import op** (`gbc/beetscfg.py` reads `beet config`): the
+  move-vs-copy decision is beets', not gbc's. **Source CONSUMED** (`import.move`, or `copy`+`delete`):
+  dedup → sidecars → prune run as before (the source is the leftover pile). **Source PRESERVED**
+  (`copy`/`reflink`/`hardlink`/symlink/in-place): the source is **READ-ONLY** — dedup/sidecars/prune are
+  ALL skipped. The **reclaim** pass then runs only in preserve+`clean_independent` mode
+  (`copy`/`reflink`/`hardlink`, never symlink/in-place): per album, when **every** track has a clean
+  copy positively verified (`verify` verdict `ok`), the whole source folder moves to `$MUSIC_DUMP`
+  (never deleted); a partially-matched or any-track-unverified album stays intact in source. clean↔source
+  correlation reuses `sidecars` duration-multiset matching (ambiguous/multi-disc → kept, never guessed).
 
 - **Logs: one file** `$LOG_DIR/gbc.log`, append-only, every line tagged `[pass]` + run id — same for
   `run` and `cron` (never per-pass files). beets' own decisions stay in `import-decisions.log`.

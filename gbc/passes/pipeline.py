@@ -1,18 +1,19 @@
-"""The pipeline: import -> verify -> acousticbrainz -> qa. `run` (manual) and `inbox` (cron) both call
-this; only the trigger differs.
+"""The pipeline: import -> verify -> acousticbrainz -> qa -> reclaim. `run` (manual) and `inbox` (cron)
+both call this; only the trigger differs.
 
 beets does the heavy lifting natively DURING `beet import` (auto: yes): match, scrub, fetchart, embedart,
-lastgenre, ftintitle, replaygain. The import pass adds dedup (before) + sidecars (after); verify flags
-imposter audio, acousticbrainz adds BPM/key/mood metadata, qa is a read-only audit. Fail-fast: if import
-fails, the watermark is NOT advanced (next run retries). The watermark scopes the later passes to items
-added since the last successful run (whole library on first run / --all).
+lastgenre, ftintitle, replaygain. The import pass adds dedup (before) + sidecars (after) IN MOVE MODE; verify
+flags imposter audio, acousticbrainz adds BPM/key/mood metadata, qa is a read-only audit. reclaim runs only
+in PRESERVE mode (beets copy/reflink/hardlink): it moves source albums whose every track verified ok to
+quarantine. Fail-fast: if import fails, the watermark is NOT advanced (next run retries). The watermark
+scopes the later passes to items added since the last successful run (whole library on first run / --all).
 """
 from datetime import datetime
 
 from .. import state
 from ..config import Config
 from ..logs import get_logger
-from . import acousticbrainz, import_, qa, verify
+from . import acousticbrainz, import_, qa, reclaim, verify
 
 
 def run(cfg: Config, *, full: bool = False, src=None, reimport: bool = False) -> int:
@@ -36,6 +37,10 @@ def run(cfg: Config, *, full: bool = False, src=None, reimport: bool = False) ->
     except Exception:                        # AB downtime must never break the import pipeline
         log.exception("acousticbrainz pass errored (non-fatal)")
     qa.run(cfg, scope=scope)                 # read-only audit (informational; never gates the watermark)
+    try:
+        reclaim.run(cfg)                     # preserve-mode only: verified source albums -> quarantine
+    except Exception:                        # reclaim must never break the import pipeline
+        log.exception("reclaim pass errored (non-fatal)")
     state.set_watermark(cfg, wm_new)
     log.info("pipeline done; watermark -> %s", wm_new)
     return 0
