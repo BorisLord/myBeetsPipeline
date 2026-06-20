@@ -56,15 +56,18 @@ def config_path() -> Path | None:
 
 
 def _source_env(path: Path) -> dict:
-    """Source config.env in bash and read back the effective values (honours ${VAR:-default} + env)."""
+    """Source config.env in bash and read back the effective values (honours ${VAR:-default} + env).
+    RAISES on a sourcing failure -- a typo in config.env must fail loudly, never silently fall back to the
+    built-in ~/Music defaults (this tool MOVES files; operating on the wrong dirs would be dangerous)."""
     bash = shutil.which("bash") or shutil.which("sh")
     if not bash:
-        return {}
-    # path passed as $1 (not interpolated) so a weird path can't break out of the script -> no shell injection
-    script = 'set -a; . "$1"; ' + "".join(f'printf "%s\\0" "${v}"; ' for v in _VARS)
+        raise RuntimeError(f"no bash/sh available to source {path}")
+    # path passed as $1 (not interpolated) so a weird path can't break out of the script -> no shell injection.
+    # `. "$1" || exit 3`: a source/syntax error in config.env aborts (without it, the later printf still rc=0).
+    script = 'set -a; . "$1" || exit 3; ' + "".join(f'printf "%s\\0" "${v}"; ' for v in _VARS)
     out = subprocess.run([bash, "-c", script, "_", str(path)], capture_output=True, text=True)
     if out.returncode != 0:
-        return {}
+        raise RuntimeError(f"failed to source {path} (rc={out.returncode}): {out.stderr.strip()}")
     parts = out.stdout.split("\0")
     return {v: parts[i].strip() for i, v in enumerate(_VARS) if i < len(parts) and parts[i].strip()}
 

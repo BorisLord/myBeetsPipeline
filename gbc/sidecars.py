@@ -36,6 +36,29 @@ TOL = 6   # seconds: per-track tolerance (ffprobe vs beets/mutagen durations dif
 COVER = re.compile(r"^(cover|front|folder|artwork|art|sleeve|label)([ _.\-]?\d+)?$", re.I)  # "the cover" names
 
 
+def _san(s):
+    """One safe path component: drop separators, strip leading/trailing dots & spaces."""
+    return str(s).replace("/", "_").replace("\\", "_").strip(". ")
+
+
+def quarantine_dir(dump, reason, albumartist="", album="", year="", *, fallback=""):
+    """Canonical $MUSIC_DUMP layout so EVERYTHING quarantined is grouped by WHY + identifiable, mirroring
+    the clean library:  <reason>/<Albumartist>/<Album (Year)>/ . `reason` is the category
+    (imposters / duplicates / reclaimed / redundant-art / shells). Falls back to <reason>/<fallback>
+    when there is no metadata (audio-less shells, untagged files)."""
+    base = Path(dump) / reason
+    artist = _san(albumartist)
+    album_dir = _san(album)
+    y = str(year).strip()[:4]
+    if y and y not in ("0", "0000", "None"):
+        album_dir = f"{album_dir} ({y})" if album_dir else f"({y})"
+    if artist and album_dir:
+        return base / artist / album_dir
+    if artist or album_dir:
+        return base / (artist or album_dir)
+    return base / (_san(fallback) or "_unknown")
+
+
 def _log(log):
     return log if log is not None else get_logger("sidecars")
 
@@ -51,7 +74,7 @@ def is_sidecar(fn):
 def dur(path):
     try:
         out = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
-                              "-of", "csv=p=0", path], capture_output=True, text=True).stdout.strip()
+                              "-of", "csv=p=0", "-i", path], capture_output=True, text=True).stdout.strip()
         return round(float(out)) if out else 0
     except (ValueError, OSError):
         return 0
@@ -124,8 +147,8 @@ def apply(snapfile, db, clean_root, dump, do_apply, log=None):
                 if not do_apply or safe_move(fp, dest, log):
                     moved += 1
                     log.info("%s %s -> %s", "MOVE" if do_apply else "DRY ", fp.name, ddir)
-            elif dump:                                     # dup / redundant cover -> quarantine/<source-folder>/
-                qd = Path(dump) / fp.parent.name
+            elif dump:                                     # dup / redundant cover -> 'Artist - Album (Year)'/
+                qd = quarantine_dir(dump, "redundant-art", ddir.parent.name, ddir.name, fallback=fp.parent.name)
                 if do_apply:
                     qd.mkdir(parents=True, exist_ok=True)
                 if not do_apply or safe_move(fp, qd / fp.name, log):
@@ -158,7 +181,7 @@ def prune_shells(src, dump, do_apply, log=None):
         dpath = Path(dp)
         if not dpath.is_dir():
             continue
-        dest = Path(dump) / dpath.name              # one quarantine folder per source album
+        dest = quarantine_dir(dump, "shells", fallback=dpath.name)   # no audio -> no metadata, source name
         if do_apply:
             dest.mkdir(parents=True, exist_ok=True)  # may already exist (a redundant cover dumped here by apply)
             for child in dpath.iterdir():            # -> merge the leftovers in, don't spawn a "(2)" sibling

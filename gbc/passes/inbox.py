@@ -23,14 +23,18 @@ def has_new(plan: str) -> bool:
     return bool(re.search(r"(?m)^(Album|Singleton):", plan))
 
 
-def _debounce(cfg: Config, interval: int = 20) -> None:
+def _debounce(cfg: Config, interval: int = 20, max_wait: int = 1800) -> None:
+    """Wait until the source size is stable across two samples (the drop finished copying), but NEVER longer
+    than `max_wait`s -- a continuously-growing source must not wedge the import lock forever."""
     prev = -1
-    while True:
+    deadline = time.monotonic() + max_wait
+    while time.monotonic() < deadline:
         cur = _dir_size(cfg.src)
         if cur == prev:
             return
         prev = cur
         time.sleep(interval)
+    get_logger("inbox").warning("debounce: source still changing after %ds -> proceeding anyway", max_wait)
 
 
 def run(cfg: Config) -> int:

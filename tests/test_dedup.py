@@ -24,7 +24,7 @@ class TestDedup(Base):
         self.assertEqual(moved, 1)
         self.assertTrue(a.exists())                                          # best bitrate kept
         self.assertFalse(b.exists())                                         # lower-bitrate dup moved out
-        self.assertTrue((self.tmp / "dump" / "Album" / "01 - Intro_dup.mp3").exists())  # -> quarantine
+        self.assertTrue((self.tmp / "dump" / "duplicates" / "Album" / "01 - Intro_dup.mp3").exists())  # <reason>/<src>
         self.assertTrue(c.exists())                                          # distinct track untouched
 
     def test_same_title_different_duration_not_merged(self):

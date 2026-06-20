@@ -32,6 +32,12 @@ watermark (scopes qa) in `state.py`. `setup.sh` is the only bash (deps + `uv too
   (never deleted); a partially-matched or any-track-unverified album stays intact in source. clean↔source
   correlation reuses `sidecars` duration-multiset matching (ambiguous/multi-disc → kept, never guessed).
 
+- **Quarantine layout** (`sidecars.quarantine_dir`): EVERYTHING moved to `$MUSIC_DUMP` is grouped by
+  **reason then album**, mirroring the clean lib: `<reason>/<Albumartist>/<Album (Year)>/…`. Reasons:
+  `imposters` (verify), `duplicates` (dedup), `redundant-art` (sidecars), `shells` (prune — audio-less, so
+  falls back to the source folder name), `reclaimed` (verified-good originals — NOT junk, purge when
+  confident). So good (reclaimed) never mixes with bad (imposters). `gbc convert` keeps its own
+  `wma-originals`/`wav-aiff-originals` subdirs (beets-driven).
 - **Logs: one file** `$LOG_DIR/gbc.log`, append-only, every line tagged `[pass]` + run id — same for
   `run` and `cron` (never per-pass files). beets' own decisions stay in `import-decisions.log`.
 - **Incremental:** qa scopes to items added since the last successful run (watermark);

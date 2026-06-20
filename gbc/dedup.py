@@ -12,7 +12,7 @@ from collections import defaultdict
 from pathlib import Path
 
 from .logs import get_logger
-from .sidecars import AUDIO, safe_move
+from .sidecars import AUDIO, quarantine_dir, safe_move
 
 # Two files compared here are the SAME track measured by the SAME ffprobe -> real duplicates are
 # near-identical in length, so the tolerance is tight (unlike sidecars' ±6s ffprobe-vs-beets comparison).
@@ -26,7 +26,7 @@ def _log(log):
 def _probe(path):
     """(title_key, duration_seconds, bitrate) for an audio file; title_key='' if unreadable/untitled."""
     try:
-        out = subprocess.run(["ffprobe", "-v", "error", "-show_format", "-of", "json", str(path)],
+        out = subprocess.run(["ffprobe", "-v", "error", "-show_format", "-of", "json", "-i", str(path)],
                              capture_output=True, text=True).stdout
         fmt = json.loads(out).get("format", {})
     except (ValueError, OSError):
@@ -34,6 +34,18 @@ def _probe(path):
     tags = {k.lower(): v for k, v in (fmt.get("tags") or {}).items()}
     title = (tags.get("title") or "").strip().casefold()
     return title, round(float(fmt.get("duration") or 0)), int(fmt.get("bit_rate") or 0)
+
+
+def _album_tags(path):
+    """(albumartist|artist, album, year) from ffprobe tags -> names the quarantine sub-folder per album."""
+    try:
+        out = subprocess.run(["ffprobe", "-v", "error", "-show_format", "-of", "json", "-i", str(path)],
+                             capture_output=True, text=True).stdout
+        tags = {k.lower(): v for k, v in (json.loads(out).get("format", {}).get("tags") or {}).items()}
+    except (ValueError, OSError):
+        return "", "", ""
+    artist = (tags.get("album_artist") or tags.get("albumartist") or tags.get("artist") or "").strip()
+    return artist, (tags.get("album") or "").strip(), (tags.get("date") or tags.get("year") or "").strip()
 
 
 def dedup(src, dump, do_apply, log=None):
@@ -61,7 +73,7 @@ def dedup(src, dump, do_apply, log=None):
             items.sort(key=lambda x: (x[2], x[3]), reverse=True)   # best bitrate, then largest file
             keep = Path(items[0][0]).name
             for p, _, _, _ in items[1:]:
-                qd = Path(dump) / Path(folder).name
+                qd = quarantine_dir(dump, "duplicates", *_album_tags(p), fallback=Path(folder).name)
                 dest = qd / Path(p).name
                 i = 1
                 while dest.exists():

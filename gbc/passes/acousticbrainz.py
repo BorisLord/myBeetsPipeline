@@ -22,6 +22,7 @@ or deletes a file.
 """
 import json
 import urllib.error
+import urllib.parse
 import urllib.request
 from collections import defaultdict
 
@@ -101,8 +102,9 @@ def _fetch(mbids: list[str]):
     """{mbid: merged_doc} for the mbids AB knows (others omitted); None on any network/parse failure
     (-> caller leaves them uncached and retries next run)."""
     merged: dict = {}
+    ids = ";".join(urllib.parse.quote(m, safe="") for m in mbids)   # encode each id; ';' stays the AB separator
     for level in ("low-level", "high-level"):
-        url = f"{API}/{level}?recording_ids=" + ";".join(mbids)
+        url = f"{API}/{level}?recording_ids={ids}"
         try:
             with urllib.request.urlopen(url, timeout=TIMEOUT) as r:
                 data = json.load(r)
@@ -156,6 +158,9 @@ def run(cfg: Config, scope: str = "") -> int:
         cfg.beetsdir.mkdir(parents=True, exist_ok=True)
         cpath.write_text(json.dumps(cache), encoding="utf-8")
 
+    # NB: cached recordings ARE re-applied every run (not just freshly-fetched ones) -- this is intentional,
+    # so a newly-added item that shares a recording id with an already-cached one still gets enriched. The
+    # incremental watermark keeps `*sc` narrow on normal runs; `--all` deliberately re-applies the whole lib.
     enriched = absent = 0
     for m in mbids:
         fields = cache.get(m)

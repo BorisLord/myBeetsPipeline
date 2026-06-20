@@ -57,6 +57,12 @@ class TestParseImport(unittest.TestCase):
         self.assertFalse(bi.move)
         self.assertTrue(bi.hardlink)
 
+    def test_reflink_auto_is_truthy(self):
+        bi = parse_import("import:\n  reflink: auto\n")        # beets' documented 'auto' value
+        self.assertTrue(bi.reflink)
+        self.assertTrue(bi.clean_independent)
+        self.assertEqual(bi.label, "reflink")
+
     def test_missing_import_block(self):
         self.assertEqual(parse_import("directory: /x\n"), BeetsImport())
 

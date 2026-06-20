@@ -19,13 +19,13 @@ from pathlib import Path
 from ..beets import run_beet
 from ..config import Config
 from ..logs import get_logger
-from ..sidecars import safe_move
+from ..sidecars import quarantine_dir, safe_move
 from ..util import backup_db
 
 APIKEY = os.environ.get("GBC_ACOUSTID_APIKEY", "1vOwZtEn")  # beets' shared key; set your own to avoid throttling
 MATCH_SCORE = 0.5   # AcoustID result score above which the file is a genuine match
 RETRIES = 4         # attempts on rate-limit / network error before giving up -> inconclusive
-SEP = "@@@"
+SEP = "\x1f"        # US control char: can't appear in tags/paths and survives str.splitlines() (unlike \x1e)
 
 
 def _acoustid_available() -> bool:
@@ -88,9 +88,9 @@ def run(cfg: Config, scope="") -> int:
         log.warning("pyacoustid not available -> fingerprint verification skipped")
         return 0
     sc = [scope] if scope else []
-    _, text = run_beet(cfg, ["ls", "-f", f"$path{SEP}$mb_trackid", "mb_trackid::.", *sc],
-                       passname="verify", echo_lines=False)
-    rows = [ln.split(SEP, 1) for ln in text.splitlines() if SEP in ln]
+    fmt = f"$id{SEP}$path{SEP}$mb_trackid{SEP}$albumartist{SEP}$album{SEP}$year"
+    _, text = run_beet(cfg, ["ls", "-f", fmt, "mb_trackid::.", *sc], passname="verify", echo_lines=False)
+    rows = [ln.split(SEP, 5) for ln in text.splitlines() if ln.count(SEP) >= 5]
 
     cpath = cfg.beetsdir / "gbc-verify-cache.json"
     try:
@@ -100,7 +100,7 @@ def run(cfg: Config, scope="") -> int:
 
     moved, checked, incon, backed = [], 0, 0, False
     verdicts: dict[str, str] = {}
-    for path, mbid in rows:
+    for itemid, path, mbid, albumartist, album, year in rows:
         try:
             st = Path(path).stat()
         except OSError:
@@ -127,7 +127,7 @@ def run(cfg: Config, scope="") -> int:
             if not backed:
                 backup_db(cfg, "verify", log)
                 backed = True
-            qd = cfg.dump / Path(path).parent.name
+            qd = quarantine_dir(cfg.dump, "imposters", albumartist, album, year, fallback=Path(path).parent.name)
             dest = qd / Path(path).name
             i = 1
             while dest.exists():
@@ -135,7 +135,7 @@ def run(cfg: Config, scope="") -> int:
                 dest = qd / f"{Path(path).stem} ({i}){Path(path).suffix}"
             qd.mkdir(parents=True, exist_ok=True)
             if safe_move(path, dest, log):                     # move out of clean, then drop the now-stale lib entry
-                run_beet(cfg, ["remove", "-f", f"path:{path}"], passname="verify", echo_lines=False)
+                run_beet(cfg, ["remove", "-f", f"id:{itemid}"], passname="verify", echo_lines=False)  # exact id
                 moved.append(path)
                 log.info("QUARANTINE imposter (audio != tagged recording): %s -> %s/", Path(path).name, qd)
 

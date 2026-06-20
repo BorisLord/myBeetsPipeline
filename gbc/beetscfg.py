@@ -27,6 +27,11 @@ def _as_bool(v) -> bool:
     return str(v).strip().lower() in ("yes", "true", "on", "1")
 
 
+def _reflink_on(v) -> bool:
+    # beets accepts reflink: yes | no | auto (auto = reflink if the FS supports it, else copy) -> treat auto as on
+    return _as_bool(v) or str(v).strip().lower() == "auto"
+
+
 @dataclass(frozen=True)
 class BeetsImport:
     move: bool = False
@@ -77,7 +82,7 @@ def parse_import(config_text: str) -> BeetsImport:
         copy=_as_bool(imp.get("copy", False)),
         link=_as_bool(imp.get("link", False)),
         hardlink=_as_bool(imp.get("hardlink", False)),
-        reflink=_as_bool(imp.get("reflink", False)),
+        reflink=_reflink_on(imp.get("reflink", False)),
         delete=_as_bool(imp.get("delete", False)),
     )
 

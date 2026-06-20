@@ -9,11 +9,13 @@ from tests.base import Base
 
 class TestVerify(Base):
     def _items(self, specs):
-        """specs: [(stem, mbid)] -> create the files (so stat() works) + return the fake `beet ls` text."""
+        """specs: [(stem, mbid)] -> create the files (so stat() works) + return the fake `beet ls` text
+        (6 fields: $id $path $mb_trackid $albumartist $album $year)."""
         lines = []
-        for stem, mbid in specs:
+        for i, (stem, mbid) in enumerate(specs, 1):
             (self.tmp / f"{stem}.m4a").write_bytes(b"x")
-            lines.append(f"{self.tmp / f'{stem}.m4a'}{verify.SEP}{mbid}")
+            p = self.tmp / f"{stem}.m4a"
+            lines.append(f"{i}{verify.SEP}{p}{verify.SEP}{mbid}{verify.SEP}TestArtist{verify.SEP}TestAlbum{verify.SEP}2001")
         return "\n".join(lines)
 
     def test_quarantines_only_conclusive_imposters(self):
@@ -29,6 +31,7 @@ class TestVerify(Base):
             n = verify.run(self.cfg)
         self.assertEqual(n, 1)                                    # only the real imposter (b)
         self.assertFalse((self.tmp / "b.m4a").exists())           # imposter moved out of "clean"
+        self.assertTrue((self.cfg.dump / "imposters" / "TestArtist" / "TestAlbum (2001)" / "b.m4a").exists())
         for stem in ("a", "c", "d"):
             self.assertTrue((self.tmp / f"{stem}.m4a").exists())  # genuine / inconclusive kept
         verd = json.loads((self.cfg.beetsdir / "gbc-verify-verdicts.json").read_text())

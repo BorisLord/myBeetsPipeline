@@ -68,9 +68,13 @@ def uninstall(cfg: Config, purge: bool = False) -> int:
             kept = "".join(ln for ln in cur.splitlines(keepends=True) if CRON_MARK not in ln)
             subprocess.run(["crontab", "-"], input=kept, text=True)
             log.info("removed cron entry")
-    if purge and cfg.beetsdir not in (Path.home(), Path("/")):
-        shutil.rmtree(cfg.beetsdir, ignore_errors=True)
-        log.info("removed beets config dir + catalog (%s)", cfg.beetsdir)
+    if purge:
+        bd, home = cfg.beetsdir.resolve(), Path.home().resolve()
+        if bd == Path("/") or bd == home or bd in home.parents:   # root, home, or an ANCESTOR of home -> refuse
+            log.warning("refusing --purge: %s is root/home or an ancestor of home", bd)
+        else:
+            shutil.rmtree(bd, ignore_errors=True)
+            log.info("removed beets config dir + catalog (%s)", bd)
     cenv = config_path()
     if cenv and cenv.exists():
         cenv.unlink()

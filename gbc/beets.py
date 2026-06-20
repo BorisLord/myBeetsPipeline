@@ -28,8 +28,10 @@ def run_beet(cfg: Config, args, *, overlay: str | None = None, passname: str,
     log.info("$ %s", " ".join(cmd))
     lines: list[str] = []
     try:
+        # errors=surrogateescape: non-UTF-8 file names round-trip identically to reclaim's sqlite BLOB
+        # decode (so verdict keys match), and a stray byte never crashes the capture.
         with subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                              text=True, bufsize=1, env=env) as proc:
+                              text=True, errors="surrogateescape", bufsize=1, env=env) as proc:
             assert proc.stdout is not None     # PIPE is always set above
             for raw in proc.stdout:
                 line = raw.rstrip("\n")

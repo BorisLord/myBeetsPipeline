@@ -39,6 +39,12 @@ class TestConfig(unittest.TestCase):
         self.assertEqual(str(cfg.clean), "/x/clean")
         self.assertEqual(str(cfg.log_dir), "/x/logs")          # dirname(/x/clean)/logs
 
+    def test_broken_config_env_raises_not_silent_defaults(self):
+        cenv = self.tmp / "config.env"
+        cenv.write_text('MUSIC_SRC="unterminated\n')             # syntax error -> sourcing must FAIL, not default
+        with mock.patch.dict(os.environ, {"GBC_CONFIG": str(cenv)}), self.assertRaises(RuntimeError):
+            config.load()
+
     def test_env_overrides_config_env(self):
         cenv = self.tmp / "config.env"
         cenv.write_text('MUSIC_CLEAN="${MUSIC_CLEAN:-/default/clean}"\n')

@@ -28,12 +28,12 @@ class TestReclaim(Base):
         """albums: {clean_subdir: [(filename, length)]} -> create library.db, return {path: ...} for verdicts."""
         self.cfg.beetsdir.mkdir(parents=True, exist_ok=True)
         con = sqlite3.connect(self.cfg.library)
-        con.execute("CREATE TABLE items (path TEXT, length REAL)")
+        con.execute("CREATE TABLE items (path TEXT, length REAL, albumartist TEXT, album TEXT, year INTEGER)")
         paths = []
         for sub, items in albums.items():
             for fn, length in items:
                 p = str(self.cfg.clean / sub / fn)
-                con.execute("INSERT INTO items VALUES (?,?)", (p, float(length)))
+                con.execute("INSERT INTO items VALUES (?,?,?,?,?)", (p, float(length), "Tigran", sub, 2015))
                 paths.append((sub, p))
         con.commit()
         con.close()
@@ -74,7 +74,7 @@ class TestReclaim(Base):
             moved = reclaim.run(self.cfg)
         self.assertEqual(moved, 1)
         self.assertFalse(good.exists())                                  # all-ok album reclaimed
-        self.assertTrue((self.cfg.dump / "AlbumGood").exists())          # -> quarantine
+        self.assertTrue((self.cfg.dump / "reclaimed" / "Tigran" / "Good (2015)").exists())   # reason/artist/album
         self.assertTrue(rare.exists())                                   # a rare track -> kept
         self.assertTrue(part.exists())                                   # count mismatch -> kept
         self.assertTrue(ambig.exists())                                  # ambiguous match -> kept
@@ -86,6 +86,30 @@ class TestReclaim(Base):
             moved = reclaim.run(self.cfg)
         self.assertEqual(moved, 0)
         self.assertTrue(good.exists())                                   # source consumed by beets -> never reclaim
+
+    def test_duplicate_source_folders_neither_reclaimed(self):
+        # two identical-duration source folders but ONE clean copy -> can't tell which was copied -> keep both
+        d1 = self._src_album("DupA", ["01", "02"])      # durs 10,20
+        d2 = self._src_album("DupB", ["01", "02"])      # same multiset
+        self._build_db({"Clean": [("01.flac", 10), ("02.flac", 20)]})
+        self._write_verdicts({str(self.cfg.clean / "Clean" / fn): "ok" for fn in ("01.flac", "02.flac")})
+        with mock.patch.object(reclaim.beetscfg, "read_import", lambda c: BeetsImport(copy=True)), \
+             mock.patch.object(sidecars, "dur", _fake_dur):
+            moved = reclaim.run(self.cfg)
+        self.assertEqual(moved, 0)
+        self.assertTrue(d1.exists() and d2.exists())    # both kept in source (clean backs at most one reclaim)
+
+    def test_unreadable_track_skips_whole_folder(self):
+        # a folder with an unprobeable file -> shrunk multiset must NOT be matched against a smaller clean album
+        alb = self._src_album("Partial", ["01", "02"])  # durs 10,20
+        (alb / "bad.flac").write_text("x")              # _fake_dur -> 0 (probe failure); folder now has 3 files
+        self._build_db({"Clean": [("01.flac", 10), ("02.flac", 20)]})  # would match the SHRUNK [10,20] sans guard
+        self._write_verdicts({str(self.cfg.clean / "Clean" / fn): "ok" for fn in ("01.flac", "02.flac")})
+        with mock.patch.object(reclaim.beetscfg, "read_import", lambda c: BeetsImport(copy=True)), \
+             mock.patch.object(sidecars, "dur", _fake_dur):
+            moved = reclaim.run(self.cfg)
+        self.assertEqual(moved, 0)                       # unmeasurable folder never reclaimed
+        self.assertTrue(alb.exists())
 
     def test_no_library_is_noop(self):
         with mock.patch.object(reclaim.beetscfg, "read_import", lambda c: BeetsImport(copy=True)):

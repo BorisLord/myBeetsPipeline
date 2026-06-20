@@ -62,7 +62,7 @@ class TestSidecars(Base):
         self.assertTrue((clean / "booklet.pdf").exists())          # booklet carried into clean
         self.assertFalse((alb / "booklet.pdf").exists())
         self.assertTrue((clean / "01 - s.lrc").exists())           # lyrics carried into clean
-        self.assertTrue((self.tmp / "dump" / "My Album (2020)" / "cover.jpg").exists())  # redundant cover quarantined
+        self.assertTrue((self.tmp / "dump" / "redundant-art" / "Artist" / "My Album (2020)" / "cover.jpg").exists())
         self.assertEqual((clean / "cover.jpg").read_text(), "existing")                  # clean cover untouched
 
     def test_prune_shells_merges_into_one_folder(self):
@@ -72,12 +72,13 @@ class TestSidecars(Base):
         (shell / "scan.png").write_text("y")
         (shell / "cover.jpg").write_text("new")
         dump = self.tmp / "dump"
-        (dump / "Alb").mkdir(parents=True)
-        (dump / "Alb" / "cover.jpg").write_text("OLD")           # apply already dumped a cover here
+        sh = dump / "shells" / "Alb"
+        sh.mkdir(parents=True)
+        (sh / "cover.jpg").write_text("OLD")                     # a prior shell dump already sits here
         sidecars.prune_shells(str(self.tmp / "src"), str(dump), True)
-        names = sorted(p.name for p in (dump / "Alb").iterdir())
+        names = sorted(p.name for p in sh.iterdir())
         self.assertEqual(names, ["back.jpg", "cover (2).jpg", "cover.jpg", "scan.png"])  # one folder, suffixed
-        self.assertEqual((dump / "Alb" / "cover.jpg").read_text(), "OLD")                # original kept
+        self.assertEqual((sh / "cover.jpg").read_text(), "OLD")                          # original kept
         self.assertFalse(shell.exists())                                                 # emptied shell removed
 
     def test_prune_shells_quarantines_shell_with_subdir(self):
@@ -89,7 +90,7 @@ class TestSidecars(Base):
         (shell / "Thumbs.db").write_text("t")
         n = sidecars.prune_shells(str(self.tmp / "src"), str(self.tmp / "dump"), True)
         self.assertEqual(n, 1)                                          # the shell, not the subfolder, counted
-        dump = self.tmp / "dump" / "Alb"
+        dump = self.tmp / "dump" / "shells" / "Alb"
         self.assertTrue((dump / "release.nfo").exists())
         self.assertTrue((dump / "Scans" / "booklet.jpg").exists())     # subfolder moved WITH its parent shell
         self.assertFalse(shell.exists())                               # source shell removed
@@ -103,7 +104,16 @@ class TestSidecars(Base):
         n = sidecars.prune_shells(str(self.tmp / "src"), str(self.tmp / "dump"), True)
         self.assertEqual(n, 0)
         self.assertTrue((alb / "Disc 1" / "01 - s.flac").exists())     # left in source
-        self.assertFalse((self.tmp / "dump" / "Skipped").exists())
+        self.assertFalse((self.tmp / "dump" / "shells" / "Skipped").exists())
+
+    def test_quarantine_dir_nested_by_reason(self):
+        qd = sidecars.quarantine_dir
+        self.assertEqual(qd("/d", "imposters", "Artist", "Album", "2020"), Path("/d/imposters/Artist/Album (2020)"))
+        self.assertEqual(qd("/d", "duplicates", "Artist", "Album", 2020), Path("/d/duplicates/Artist/Album (2020)"))
+        self.assertEqual(qd("/d", "imposters", "Artist", "Album", "0"), Path("/d/imposters/Artist/Album"))  # year 0
+        self.assertEqual(qd("/d", "shells", "A/B", "C", "2020"), Path("/d/shells/A_B/C (2020)"))   # slash sanitised
+        self.assertEqual(qd("/d", "shells", "", "", "", fallback="Src"), Path("/d/shells/Src"))    # no meta -> fallback
+        self.assertEqual(qd("/d", "shells", "", "", ""), Path("/d/shells/_unknown"))
 
     def test_safe_move_failure_is_logged_not_raised(self):
         import logging

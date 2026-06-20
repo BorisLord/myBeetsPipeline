@@ -1,4 +1,6 @@
 import unittest
+from itertools import count
+from unittest import mock
 
 from gbc.lock import import_lock
 from gbc.passes import inbox
@@ -18,6 +20,14 @@ class TestInboxGate(Base):
         self.cfg.beet = self.fake_beet(stderr="Skipped 1 paths.\n")   # --pretend plan on STDERR, nothing new
         self.assertEqual(inbox.run(self.cfg), 0)
         self.assertFalse((self.cfg.beetsdir / "gbc-state.json").exists())   # pipeline never ran
+
+    def test_debounce_bounded_on_growing_source(self):
+        clk = count(0, 600)                       # monotonic jumps 600s/call -> exceeds max_wait=1800 fast
+        grow = count(0, 1000)                     # source size never stabilises
+        with mock.patch.object(inbox.time, "monotonic", lambda: next(clk)), \
+             mock.patch.object(inbox.time, "sleep", lambda s: None), \
+             mock.patch.object(inbox, "_dir_size", lambda s: next(grow)):
+            inbox._debounce(self.cfg, interval=0, max_wait=1800)   # must RETURN, not loop forever
 
     def test_inbox_bows_out_when_locked(self):
         (self.cfg.src / "f").mkdir(parents=True)
