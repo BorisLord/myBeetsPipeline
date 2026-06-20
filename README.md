@@ -3,15 +3,14 @@
 Turn a chaotic music library — tens of thousands of loose, mis-tagged files — into a clean **album**
 library you can serve with any player (Navidrome, Jellyfin, Plex, any Subsonic/DLNA).
 
-The heart of the project is an **opinionated, battle-tested [beets](https://beets.io) config**; a small
-Python CLI (`gbc`) wraps it with the orchestration a config can't express (dedup, sidecars, QA, format
-conversion). Albums are matched by **AcoustID audio fingerprint** + tags — robust to duplicate track
+At its core is a documented [beets](https://beets.io) config for album-mode recovery; a small Python CLI
+(`gbc`) wraps it with the orchestration a config can't express (dedup, sidecars, QA, format conversion). Albums are matched by **AcoustID audio fingerprint** + tags — robust to duplicate track
 numbers, download-batch folders and untitled rips, because the source folder structure is ignored.
 
 ## Golden beet config
 
-[`golden-beet-config.yaml`](golden-beet-config.yaml) is that config — think *golden golangci-lint config*,
-but for beets. Every setting is documented with the *why*:
+[`golden-beet-config.yaml`](golden-beet-config.yaml) is that config: one beets config for the recovery
+described here, every setting commented:
 
 - **Album mode + AcoustID** — identify by audio content, not by file/folder names.
 - **`quiet` + `quiet_fallback: skip`** — auto-accept only *strong* matches; never guess.
@@ -42,9 +41,9 @@ stay in `source/` to curate. For other paths, edit `config.env` (created by setu
 ## Commands
 
 ```
-gbc run [--all]         run the pipeline now (import → verify → qa); --all re-checks the whole library
+gbc run [--all] [--reimport]   pipeline now (import → verify → qa); --all re-checks all, --reimport re-tries seen folders
 gbc inbox               cron door: import a fresh drop if anything is new, then the pipeline
-gbc import [SOURCE]     album-match import only (art/genres/replaygain run automatically)
+gbc import [SOURCE] [--reimport]   album-match import only (--reimport re-tries already-seen folders)
 gbc qa [QUERY]          read-only technical audit + anomaly scan
 gbc anomaly [QUERY]     read-only name/anomaly scan only
 gbc verify [QUERY]      quarantine imposter tracks (audio ≠ tagged recording) via AcoustID
@@ -66,7 +65,7 @@ call the **same** pipeline — only the trigger and scope differ.
 
 1. **Group** the audio files into one album candidate (hidden + video files ignored).
 2. **Fingerprint** each with AcoustID (`chroma`/`fpcalc`) and read its tags, then match against MusicBrainz.
-3. **Score** the match as a distance (`strong_rec_thresh: 0.15`); missing/extra tracks are penalised
+3. **Score** the match as a distance (`strong_rec_thresh: 0.20`); missing/extra tracks are penalised
    (`max_rec`) so only **complete** albums score strongly.
 4. **Decide** — `quiet` + `quiet_fallback: skip`: strong matches auto-accept, everything else is **skipped**
    (never guessed; left in `source/` to curate).
@@ -172,6 +171,7 @@ CLIs. It **never touches your music** (`MUSIC_SRC`, `MUSIC_CLEAN`, `MUSIC_DUMP`)
 - **Never use `--from-logfile`** (parent paths + names with `;` cause recursion) — import the directory directly.
 - **WMA is stored as "Windows Media"** → query `format::Windows`, not `format:WMA`.
 - **`incremental` remembers *skipped* folders too.** A weak-match folder you re-tag won't be retried by
-  cron — re-import it explicitly, drop it under a new path, or clear beets' history (`$BEETSDIR/state.pickle`).
+  cron — re-run with `gbc run --reimport` (beets `-I`), drop it under a new path, or clear beets' history
+  (`$BEETSDIR/state.pickle`).
 - **Rate-limiting is NOT the cause of skips** (0 real 429/503 over 10k+ evaluations) — skips = weak match
   + quiet mode refusing to guess. No personal AcoustID key needed (non-commercial use is free).

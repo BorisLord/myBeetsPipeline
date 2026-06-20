@@ -1,12 +1,11 @@
 # ─────────────────────────────────────────────────────────────────────────────
-#  THE GOLDEN BEET CONFIG  —  an opinionated, battle-tested beets config
+#  golden-beet-config  —  a beets config for album-mode music recovery
 # ─────────────────────────────────────────────────────────────────────────────
 # A drop-in `~/.config/beets/config.yaml` for ONE job: turn a chaotic, mis-tagged
 # music dump into a clean ALBUM library you can serve with any player (Navidrome,
-# Jellyfin, Plex, any Subsonic/DLNA). Like a golden golangci-lint config, it
-# encodes choices most people only learn the hard way — each with the *why*.
+# Jellyfin, Plex, any Subsonic/DLNA). Each setting is commented with the reason for it.
 #
-# PHILOSOPHY (what makes it opinionated):
+# APPROACH:
 #   • Album mode + AcoustID fingerprint: identify by CONTENT, not by file/folder names.
 #   • quiet + quiet_fallback: skip  -> auto-accept ONLY strong matches, never guess.
 #   • Only COMPLETE, strong albums are kept; weak/partial ones are left untouched
@@ -55,9 +54,9 @@ musicbrainz:
   genres: yes            # MusicBrainz genres (primary, vote-sorted); lastgenre (force:no) only fills the gaps
 
 match:
-  strong_rec_thresh: 0.15   # distance < 0.15 = "strong" => auto-accepted. Raise to be stricter, lower to accept more.
+  strong_rec_thresh: 0.20   # distance < 0.20 = "strong" => auto-accepted. Higher = accept more (less strict); lower = stricter.
   preferred:
-    countries: ['US', 'GB|UK']        # ADJUST TO YOUR LOCALE (e.g. add 'FR','DE'...) -- only a soft penalty otherwise
+    countries: ['XW']                 # XW = worldwide (locale-neutral default); add codes (US, FR, GB|UK…) to localize
     media: ['Digital Media|File', 'CD']
     original_year: yes
   max_rec:

@@ -30,9 +30,9 @@ musicbrainz:
   genres: yes             # genres from MusicBrainz (primary); lastgenre (force: no) only fills empty ones
 
 match:
-  strong_rec_thresh: 0.15
+  strong_rec_thresh: 0.20      # distance < 0.20 = "strong" -> auto-accepted (higher = accept more; verify/qa are the net)
   preferred:
-    countries: ['US', 'GB|UK']           # preferred release countries (adjust to your locale)
+    countries: ['XW']                    # XW = worldwide (locale-neutral default); add codes (US, FR, GB|UK…) to localize
     media: ['Digital Media|File', 'CD']
     original_year: yes
   max_rec:
