@@ -12,13 +12,13 @@ from ..logs import get_logger
 from . import import_, qa, verify
 
 
-def run(cfg, *, full: bool = False, src=None) -> int:
+def run(cfg, *, full: bool = False, src=None, reimport: bool = False) -> int:
     log = get_logger("pipeline")
     wm_old = None if full else state.get_watermark(cfg)
     scope = state.added_query(wm_old)        # qa scope: items added since last run ("" = whole library)
     log.info("pipeline start (%s)%s", "full" if full else "incremental", f" scope={scope}" if scope else "")
 
-    rc = import_.run(cfg, src=src)           # match + scrub + art + genres + ftintitle + replaygain (beets auto)
+    rc = import_.run(cfg, src=src, reimport=reimport)   # match + scrub + art + genres + ftintitle + replaygain
     if rc:
         log.error("pipeline ABORTED: import failed (rc=%d) -- watermark NOT advanced, will retry next run", rc)
         return rc

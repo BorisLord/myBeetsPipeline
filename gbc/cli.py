@@ -1,8 +1,8 @@
 """gbc CLI -- one tool, several doors. beets does art/genres/replaygain/scrub natively during import.
 
-  gbc run [--all]        full pipeline now (import -> qa), incremental
+  gbc run [--all] [--reimport]  full pipeline (import -> qa); --reimport re-tries already-seen folders
   gbc inbox              cron door: import a drop if anything is new, then the pipeline
-  gbc import [SOURCE]    album-match import only (art + genres + replaygain run automatically)
+  gbc import [SOURCE] [--reimport]  album-match import only (--reimport re-tries already-seen folders)
   gbc qa [QUERY]         read-only technical audit + anomaly scan
   gbc anomaly [QUERY]    read-only name/anomaly scan only
   gbc verify [QUERY]     quarantine imposter tracks (audio != tagged recording) via AcoustID
@@ -25,9 +25,11 @@ def _build_parser() -> argparse.ArgumentParser:
     sub = p.add_subparsers(dest="cmd", required=True)
     pr = sub.add_parser("run", help="full pipeline now (incremental)")
     pr.add_argument("--all", action="store_true", help="reprocess the whole library (ignore watermark)")
+    pr.add_argument("--reimport", action="store_true", help="re-evaluate already-seen folders (beets -I)")
     sub.add_parser("inbox", help="cron door: import a drop if there's anything new, then the pipeline")
     pi = sub.add_parser("import", help="album-match import only (art/genres/replaygain run automatically)")
     pi.add_argument("source", nargs="?", help="source dir (default: MUSIC_SRC)")
+    pi.add_argument("--reimport", action="store_true", help="re-evaluate already-seen folders (beets -I)")
     pq = sub.add_parser("qa", help="read-only technical audit")
     pq.add_argument("query", nargs="?", default="", help="scope query (default: whole library)")
     pa = sub.add_parser("anomaly", help="read-only name/anomaly scan only")
@@ -49,12 +51,12 @@ def main(argv=None) -> int:
 
     if args.cmd == "run":
         with import_lock(cfg, blocking=True):
-            return pipeline.run(cfg, full=args.all)
+            return pipeline.run(cfg, full=args.all, reimport=args.reimport)
     if args.cmd == "inbox":
         return inbox.run(cfg)
     if args.cmd == "import":
         with import_lock(cfg, blocking=True):
-            return import_.run(cfg, src=args.source)
+            return import_.run(cfg, src=args.source, reimport=args.reimport)
     if args.cmd == "qa":
         return qa.run(cfg, scope=args.query)
     if args.cmd == "anomaly":

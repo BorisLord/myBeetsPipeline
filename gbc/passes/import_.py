@@ -13,7 +13,7 @@ from ..logs import get_logger
 from ..util import backup_db, count_items, prune_empty_dirs
 
 
-def run(cfg, src=None) -> int:
+def run(cfg, src=None, reimport=False) -> int:
     log = get_logger("import")
     src = Path(src) if src else cfg.src
     if not src.is_dir():
@@ -24,7 +24,8 @@ def run(cfg, src=None) -> int:
     snap = tempfile.NamedTemporaryFile(prefix="sidecars-", suffix=".json", delete=False).name  # noqa: SIM115
     try:
         sidecars.snapshot(str(src), snap, log)                      # capture sidecars while source has its audio
-        rc, _ = run_beet(cfg, ["import", "-q", "-i", str(src)], passname="import")  # auto: art+genres+rg+scrub
+        inc = "-I" if reimport else "-i"      # -I = noincremental: re-evaluate already-seen (modified) folders
+        rc, _ = run_beet(cfg, ["import", "-q", inc, str(src)], passname="import")   # auto: art+genres+rg+scrub
         if rc:
             log.error("beet import failed (rc=%d)", rc)
         sidecars.apply(snap, str(cfg.library), str(cfg.clean), str(cfg.dump), True, log)  # carry into clean

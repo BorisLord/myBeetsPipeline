@@ -11,13 +11,19 @@ from tests.base import Base
 class TestCliDispatch(Base):
     """The CLI routes each subcommand to the right code path (passes/lock mocked -- no beets, no network)."""
 
-    def test_run_routes_to_pipeline_with_full_flag(self):
+    def test_run_routes_full_and_reimport_flags(self):
         seen = {}
+
+        def fake_pipeline(c, *, full=False, src=None, reimport=False):
+            seen.update(full=full, reimport=reimport)
+            return 0
+
         with mock.patch.object(cli, "configure", lambda *a, **k: None), \
              mock.patch.object(configmod, "load", lambda: self.cfg), \
-             mock.patch.object(pipeline, "run", lambda c, *, full=False, src=None: seen.update(full=full) or 0):
-            self.assertEqual(cli.main(["run", "--all"]), 0)
+             mock.patch.object(pipeline, "run", fake_pipeline):
+            self.assertEqual(cli.main(["run", "--all", "--reimport"]), 0)
         self.assertTrue(seen.get("full"))            # --all -> full=True
+        self.assertTrue(seen.get("reimport"))        # --reimport -> reimport=True
 
     def test_qa_routes_with_scope(self):
         seen = {}
@@ -30,7 +36,7 @@ class TestCliDispatch(Base):
     def test_import_takes_lock_and_routes(self):
         with mock.patch.object(cli, "configure", lambda *a, **k: None), \
              mock.patch.object(configmod, "load", lambda: self.cfg), \
-             mock.patch.object(import_, "run", lambda c, src=None: 0):
+             mock.patch.object(import_, "run", lambda c, src=None, reimport=False: 0):
             self.assertEqual(cli.main(["import"]), 0)
 
     def test_convert_takes_lock_and_routes(self):

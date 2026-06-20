@@ -14,7 +14,7 @@ class TestPipeline(Base):
             seen["qa"] = scope
             return 0
 
-        with mock.patch.object(import_, "run", lambda c, src=None: 0), \
+        with mock.patch.object(import_, "run", lambda c, src=None, reimport=False: 0), \
              mock.patch.object(qa, "run", fake_qa):
             # first run: no watermark -> qa over whole library; watermark set afterwards
             self.assertEqual(pipeline.run(self.cfg), 0)
@@ -38,7 +38,7 @@ class TestPipeline(Base):
             reached["qa"] = True
             return 0
 
-        with mock.patch.object(import_, "run", lambda c, src=None: 2), \
+        with mock.patch.object(import_, "run", lambda c, src=None, reimport=False: 2), \
              mock.patch.object(qa, "run", fake_qa):
             rc = pipeline.run(self.cfg)
         self.assertEqual(rc, 2)
