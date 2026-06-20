@@ -10,7 +10,7 @@ gbc adapts to the EFFECTIVE beets import op (read via `beets.beetscfg`):
 import tempfile
 from pathlib import Path
 
-from .. import beetscfg, sidecars
+from .. import artfix, beetscfg, sidecars
 from ..beets import run_beet
 from ..config import Config
 from ..dedup import dedup
@@ -32,6 +32,7 @@ def run(cfg: Config, src=None, reimport=False) -> int:
     if not src.is_dir():
         log.error("source missing: %s", src)
         return 1
+    artfix.run(cfg, src=src, log=log)          # strip mime=None WMA art so scrub can't crash beet import
     bi = beetscfg.read_import(cfg)
     backup_db(cfg, "rebuild", log)
 

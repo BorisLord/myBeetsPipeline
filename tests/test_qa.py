@@ -1,5 +1,8 @@
+import logging
 import unittest
+from unittest import mock
 
+from gbc.passes import qa
 from gbc.passes.qa import _container_mismatch
 from tests.base import Base
 
@@ -32,6 +35,20 @@ class TestContainerMismatch(Base):
     def test_unchecked_extension_ignored(self):
         # .wav legitimately IS RIFF; extensions we don't map are never flagged
         self.assertEqual(_container_mismatch(self._w("h.wav", b"RIFF\x00\x00\x00\x00WAVE")), "")
+
+
+class TestCull(Base):
+    def test_cull_moves_corrupt_to_reason_layout(self):
+        alb = self.cfg.clean / "Tigran" / "Mockroot (2015)"
+        alb.mkdir(parents=True)
+        bad = alb / "03 - bad.flac"
+        bad.write_bytes(b"x")
+        with mock.patch.object(qa, "run_beet", lambda *a, **k: (0, "")):     # stub the lib remove
+            n = qa._cull(self.cfg, [str(bad), str(bad)], logging.getLogger("t"))   # duplicate path -> deduped
+        self.assertEqual(n, 1)
+        self.assertFalse(bad.exists())                                       # moved out of clean
+        dest = self.cfg.dump / "corrupt" / "Tigran" / "Mockroot (2015)" / "03 - bad.flac"
+        self.assertTrue(dest.exists())                                       # quarantine/corrupt/<artist>/<album>/
 
 
 if __name__ == "__main__":

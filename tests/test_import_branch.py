@@ -18,6 +18,7 @@ class TestImportBranch(Base):
         def rec(name):
             return lambda *a, **k: self.calls.append(name)
         with mock.patch.object(import_.beetscfg, "read_import", lambda c: bi), \
+             mock.patch.object(import_.artfix, "run", lambda *a, **k: 0), \
              mock.patch.object(import_, "_beet_import", lambda *a: self.calls.append("import") or 0), \
              mock.patch.object(import_, "dedup", rec("dedup")), \
              mock.patch.object(import_.sidecars, "snapshot", lambda *a, **k: self.calls.append("snapshot") or 0), \

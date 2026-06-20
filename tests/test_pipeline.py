@@ -10,7 +10,7 @@ class TestPipeline(Base):
     def test_qa_scope_follows_watermark(self):
         seen = {}
 
-        def fake_qa(c, scope=""):
+        def fake_qa(c, scope="", cull=False):
             seen["qa"] = scope
             return 0
 
@@ -34,7 +34,7 @@ class TestPipeline(Base):
     def test_failed_import_aborts_before_qa_and_keeps_watermark(self):
         reached = {"qa": False}
 
-        def fake_qa(c, scope=""):
+        def fake_qa(c, scope="", cull=False):
             reached["qa"] = True
             return 0
 

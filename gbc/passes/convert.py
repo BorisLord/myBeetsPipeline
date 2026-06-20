@@ -14,9 +14,11 @@ from ..util import backup_db, count_items
 
 # (label, target desc, beet -f format, query, quarantine subdir). WMA is stored as "Windows Media"
 # (-> format::Windows); WAV/AIFF matched by path (content-agnostic, avoids format-name surprises).
+# quarantine sub = the REASON ("converted"); beets lays the originals out by album under it
+# (-> quarantine/converted/<Albumartist>/<Album (Year)>/...), consistent with the other quarantine reasons.
 JOBS = [
-    ("WMA", "AAC/m4a (~256k)", "aac", ["format::Windows"], "wma-originals"),
-    ("WAV/AIFF", "FLAC (lossless)", "flac", [r"path::(?i)\.(wav|aiff?)$"], "wav-aiff-originals"),
+    ("WMA", "AAC/m4a (~256k)", "aac", ["format::Windows"], "converted"),
+    ("WAV/AIFF", "FLAC (lossless)", "flac", [r"path::(?i)\.(wav|aiff?)$"], "converted"),
 ]
 
 

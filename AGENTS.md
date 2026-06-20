@@ -14,10 +14,12 @@ complete, strong albums are kept — loose singletons stay parked in the source 
 ## Architecture (one core, several doors)
 
 `gbc run` (manual) and `gbc inbox` (cron, on drop) call the **same** pipeline
-(`gbc/passes/pipeline.py`: **import → verify → acousticbrainz → qa → reclaim**). beets does art/genres/replaygain/scrub/ftintitle
-**natively during `beet import`** (`auto: yes` in `config.yaml`); gbc only adds **dedup** (before
-import) + **sidecars** (after) + **verify** (AcoustID imposter -> quarantine) + **acousticbrainz**
-(network-only BPM/key/mood enrichment) + **qa/anomaly** (audit) + **reclaim**. Passes in `gbc/passes/`; beets driven
+(`gbc/passes/pipeline.py`: **import → convert → verify → acousticbrainz → qa → reclaim**). beets does art/genres/replaygain/scrub/ftintitle
+**natively during `beet import`** (`auto: yes` in `config.yaml`); gbc adds **artfix** (pre-import: strip
+mime=None WMA art so scrub can't crash) + **dedup**/**sidecars** (move mode only) + **convert** (WMA→AAC,
+WAV/AIFF→FLAC, BEFORE verify so every later pass runs on the converted files) + **verify** (AcoustID imposter
+-> quarantine) + **acousticbrainz** (network-only BPM/key/mood) + **qa/anomaly** (audit; **culls corrupt
+files** in the pipeline) + **reclaim**. Passes in `gbc/passes/`; beets driven
 through `beets.run_beet` (captures stdout **and stderr** — beet logs its `--pretend` plan to stderr);
 config in `config.py`; single logger in `logs.py`; import lock (filelock) in `lock.py`; incremental
 watermark (scopes qa) in `state.py`. `setup.sh` is the only bash (deps + `uv tool install --editable .` + `gbc init`).
@@ -35,9 +37,9 @@ watermark (scopes qa) in `state.py`. `setup.sh` is the only bash (deps + `uv too
 - **Quarantine layout** (`sidecars.quarantine_dir`): EVERYTHING moved to `$MUSIC_DUMP` is grouped by
   **reason then album**, mirroring the clean lib: `<reason>/<Albumartist>/<Album (Year)>/…`. Reasons:
   `imposters` (verify), `duplicates` (dedup), `redundant-art` (sidecars), `shells` (prune — audio-less, so
-  falls back to the source folder name), `reclaimed` (verified-good originals — NOT junk, purge when
-  confident). So good (reclaimed) never mixes with bad (imposters). `gbc convert` keeps its own
-  `wma-originals`/`wav-aiff-originals` subdirs (beets-driven).
+  falls back to the source folder name), `converted` (convert: WMA/WAV originals replaced by AAC/FLAC),
+  `corrupt` (qa cull: integrity/decode/container failures), `reclaimed` (verified-good source originals —
+  NOT junk, purge when confident). So good (reclaimed) never mixes with bad (imposters/corrupt).
 - **Logs: one file** `$LOG_DIR/gbc.log`, append-only, every line tagged `[pass]` + run id — same for
   `run` and `cron` (never per-pass files). beets' own decisions stay in `import-decisions.log`.
 - **Incremental:** qa scopes to items added since the last successful run (watermark);

@@ -12,6 +12,8 @@ from .. import anomaly
 from ..beets import run_beet
 from ..config import Config
 from ..logs import get_logger
+from ..sidecars import quarantine_dir, safe_move
+from ..util import backup_db
 
 JUNK = re.compile(r"https?://|www\.|\.(com|net|org|tk|br)|\bEAC\b|\bLame\b|\bLAMEB?\s*\d|CDex|Easy CD-DA|Tagged By"
                   r"|Encoded by|ripped by|Created with|meXPiracy|Autodesk|bandcamp|No Comment", re.I)
@@ -63,7 +65,31 @@ def _container_mismatch(path):
     return ""
 
 
-def run(cfg: Config, scope: str = "") -> int:
+def _cull(cfg: Config, paths, log) -> int:
+    """Move corrupt clean files to quarantine/corrupt/<Albumartist>/<Album (Year)>/ (never deleted) and drop
+    the lib entry, so clean stays playable. Identity derived from the clean path (already sanitised)."""
+    backup_db(cfg, "qa-cull", log)
+    moved = 0
+    for p in dict.fromkeys(paths):                 # dedupe, keep order
+        fp = Path(p)
+        if not fp.exists():
+            continue
+        qd = quarantine_dir(cfg.dump, "corrupt", fp.parent.parent.name, fp.parent.name, fallback=fp.parent.name)
+        dest = qd / fp.name
+        i = 1
+        while dest.exists():
+            i += 1
+            dest = qd / f"{fp.stem} ({i}){fp.suffix}"
+        qd.mkdir(parents=True, exist_ok=True)
+        if safe_move(p, dest, log):
+            run_beet(cfg, ["remove", "-f", f"path:{p}"], passname="qa", echo_lines=False)
+            moved += 1
+            log.info("CULL corrupt: %s -> %s/", fp.name, qd)
+    log.info("  [CORRUPT] %d corrupt file(s) culled to %s/corrupt -- recoverable, never deleted", moved, cfg.dump)
+    return moved
+
+
+def run(cfg: Config, scope: str = "", cull: bool = False) -> int:
     log = get_logger("qa")
     sc = [scope] if scope else []
 
@@ -105,8 +131,13 @@ def run(cfg: Config, scope: str = "") -> int:
     fail = [x for x in bad if "checker exited with status" in x or "file does not exist" in x]
     baderr = len(fail)
     log.info("=== 6. integrity (beet bad): %d bad file(s) ===", baderr)
+    corrupt = []                                # clean paths to (optionally) cull -> quarantine/corrupt/
     for x in fail:
         log.info("  %s", x)
+        for marker in (": checker exited with status", ": file does not exist"):
+            if marker in x:
+                corrupt.append(x.split(marker, 1)[0])
+                break
     paths = _lines(cfg, ["ls", "-p", *sc])
     other_bad = 0
     if shutil.which("ffmpeg"):
@@ -117,6 +148,7 @@ def run(cfg: Config, scope: str = "") -> int:
                                  capture_output=True, text=True)
             if res.stderr.strip():
                 other_bad += 1
+                corrupt.append(p)
                 log.info("  BAD: %s", p)
     log.info("=== 6b. other-format decode: %d bad ===", other_bad)
 
@@ -126,6 +158,8 @@ def run(cfg: Config, scope: str = "") -> int:
     log.info("=== 6c. container/extension mismatch: %d ===", len(mism))
     for p, why in mism:
         log.info("  MISMATCH (%s): %s", why, p)
+        corrupt.append(p)
+    culled = _cull(cfg, corrupt, log) if cull else 0
 
     # 7. junk metadata (comments + encoder noise)
     cmt = sum(1 for x in _lines(cfg, ["ls", "-f", "[$comments] | $artist - $title", "comments::.", *sc])
@@ -157,10 +191,13 @@ def run(cfg: Config, scope: str = "") -> int:
         actions.append(f"[dups]    {len(dups)} duplicate track(s) -> review section 5, then: beet duplicates -m DUMP")
     if wma:
         actions.append(f"[format]  {wma} WMA (legacy/proprietary, breaks scrub+players) -> `gbc convert`")
-    if baderr + other_bad:
-        actions.append(f"[CORRUPT] {baderr + other_bad} file(s) failing integrity -> move to {cfg.dump} and re-rip")
-    if mism:
-        actions.append(f"[FORMAT]  {len(mism)} file(s) container!=extension (RIFF in .mp3 etc.) -> remux via ffmpeg")
+    if culled:
+        actions.append(f"[CORRUPT] {culled} corrupt/mismatched file(s) culled to {cfg.dump}/corrupt -- re-rip")
+    else:
+        if baderr + other_bad:
+            actions.append(f"[CORRUPT] {baderr + other_bad} file(s) failing integrity -> move to {cfg.dump} and re-rip")
+        if mism:
+            actions.append(f"[FORMAT]  {len(mism)} container!=extension (RIFF in .mp3 etc.) -> remux via ffmpeg")
     if anom:
         actions.append(f"[names]   {anom} name/title anomalies -> {workdir}/*.tsv (review)")
     for a in actions:

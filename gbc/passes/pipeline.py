@@ -1,5 +1,6 @@
-"""The pipeline: import -> verify -> acousticbrainz -> qa -> reclaim. `run` (manual) and `inbox` (cron)
-both call this; only the trigger differs.
+"""The pipeline: import -> convert -> verify -> acousticbrainz -> qa -> reclaim. `run` (manual) and `inbox`
+(cron) both call this; only the trigger differs. convert runs BEFORE verify so every later pass operates
+identically on the converted (WMA->AAC, WAV/AIFF->FLAC) files, not the originals.
 
 beets does the heavy lifting natively DURING `beet import` (auto: yes): match, scrub, fetchart, embedart,
 lastgenre, ftintitle, replaygain. The import pass adds dedup (before) + sidecars (after) IN MOVE MODE; verify
@@ -13,7 +14,7 @@ from datetime import datetime
 from .. import state
 from ..config import Config
 from ..logs import get_logger
-from . import acousticbrainz, import_, qa, reclaim, verify
+from . import acousticbrainz, convert, import_, qa, reclaim, verify
 
 
 def run(cfg: Config, *, full: bool = False, src=None, reimport: bool = False) -> int:
@@ -26,6 +27,10 @@ def run(cfg: Config, *, full: bool = False, src=None, reimport: bool = False) ->
     if rc:
         log.error("pipeline ABORTED: import failed (rc=%d) -- watermark NOT advanced, will retry next run", rc)
         return rc
+    try:
+        convert.run(cfg)                     # normalise WMA->AAC, WAV/AIFF->FLAC BEFORE verify so every later
+    except Exception:                        # pass runs identically on the converted files; best-effort
+        log.exception("convert pass errored (non-fatal)")
     wm_new = datetime.now().replace(microsecond=0).isoformat()   # after import: this run's items are < wm_new
 
     try:
@@ -36,7 +41,7 @@ def run(cfg: Config, *, full: bool = False, src=None, reimport: bool = False) ->
         acousticbrainz.run(cfg, scope=scope)  # network-only acoustic metadata (BPM/key/moods); best-effort
     except Exception:                        # AB downtime must never break the import pipeline
         log.exception("acousticbrainz pass errored (non-fatal)")
-    qa.run(cfg, scope=scope)                 # read-only audit (informational; never gates the watermark)
+    qa.run(cfg, scope=scope, cull=True)      # audit + cull corrupt files -> quarantine/corrupt (never gates)
     try:
         reclaim.run(cfg)                     # preserve-mode only: verified source albums -> quarantine
     except Exception:                        # reclaim must never break the import pipeline
