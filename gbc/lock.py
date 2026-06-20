@@ -5,9 +5,11 @@ from contextlib import contextmanager
 
 from filelock import FileLock, Timeout
 
+from .config import Config
+
 
 @contextmanager
-def import_lock(cfg, *, blocking: bool = True):
+def import_lock(cfg: Config, *, blocking: bool = True):
     """Yields True if the lock was acquired (and releases on exit), False if busy (non-blocking)."""
     cfg.beetsdir.mkdir(parents=True, exist_ok=True)
     lock = FileLock(str(cfg.beetsdir / ".import.lock"))

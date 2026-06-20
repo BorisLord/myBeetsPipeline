@@ -8,10 +8,11 @@ there is no "variable not propagated" class of bug.
 import os
 import subprocess
 
+from .config import Config
 from .logs import get_logger
 
 
-def run_beet(cfg, args, *, overlay: str | None = None, passname: str,
+def run_beet(cfg: Config, args, *, overlay: str | None = None, passname: str,
              echo_lines: bool = True) -> tuple[int, str]:
     """Run `beet [-c overlay] <args...>`. Returns (returncode, merged_output_text).
 

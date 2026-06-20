@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 
 from ..beets import run_beet
+from ..config import Config
 from ..lock import import_lock
 from ..logs import get_logger
 from . import pipeline
@@ -22,7 +23,7 @@ def has_new(plan: str) -> bool:
     return bool(re.search(r"(?m)^(Album|Singleton):", plan))
 
 
-def _debounce(cfg, interval: int = 20) -> None:
+def _debounce(cfg: Config, interval: int = 20) -> None:
     prev = -1
     while True:
         cur = _dir_size(cfg.src)
@@ -32,7 +33,7 @@ def _debounce(cfg, interval: int = 20) -> None:
         time.sleep(interval)
 
 
-def run(cfg) -> int:
+def run(cfg: Config) -> int:
     log = get_logger("inbox")
     with import_lock(cfg, blocking=False) as got:
         if not got:

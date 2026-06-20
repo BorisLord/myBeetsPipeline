@@ -4,12 +4,14 @@ library (handles the initial bulk). `--all` ignores it. Stored in BEETSDIR/gbc-s
 """
 import json
 
+from .config import Config
 
-def _path(cfg):
+
+def _path(cfg: Config):
     return cfg.beetsdir / "gbc-state.json"
 
 
-def get_watermark(cfg) -> str | None:
+def get_watermark(cfg: Config) -> str | None:
     p = _path(cfg)
     if not p.exists():
         return None
@@ -19,7 +21,7 @@ def get_watermark(cfg) -> str | None:
         return None
 
 
-def set_watermark(cfg, iso_ts: str) -> None:
+def set_watermark(cfg: Config, iso_ts: str) -> None:
     p = _path(cfg)
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps({"last_run": iso_ts}), encoding="utf-8")

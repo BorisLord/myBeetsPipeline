@@ -17,6 +17,7 @@ import urllib.request
 from pathlib import Path
 
 from ..beets import run_beet
+from ..config import Config
 from ..logs import get_logger
 from ..sidecars import safe_move
 from ..util import backup_db
@@ -72,7 +73,7 @@ def _official_known(mbid):
     return None
 
 
-def run(cfg, scope="") -> int:
+def run(cfg: Config, scope="") -> int:
     """Flag imposter tracks among items added in `scope` (whole library if empty). Returns the imposter count."""
     log = get_logger("verify")
     if not _acoustid_available():

@@ -8,6 +8,7 @@ compat). Each original is MOVED to a quarantine subdir (keep_new) -- NEVER delet
 read-only and untouched; only files that actually made it into the clean lib are converted.
 """
 from ..beets import run_beet
+from ..config import Config
 from ..logs import get_logger
 from ..util import backup_db, count_items
 
@@ -19,7 +20,7 @@ JOBS = [
 ]
 
 
-def run(cfg) -> int:
+def run(cfg: Config) -> int:
     log = get_logger("convert")
     pending = [(lbl, tgt, fmt, q, sub, n)
                for (lbl, tgt, fmt, q, sub) in JOBS

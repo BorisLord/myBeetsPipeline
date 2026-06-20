@@ -9,7 +9,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from .config import REPO_ROOT, config_path
+from .config import REPO_ROOT, Config, config_path
 from .logs import get_logger
 
 CRON_MARK = "gbc inbox"
@@ -18,7 +18,7 @@ _HOME = Path.home()
 CRON_PATH = f"{_HOME}/.local/bin:{_HOME}/.local/share/mise/shims:/usr/local/bin:/usr/bin:/bin"
 
 
-def init(cfg, cron: bool = False) -> int:
+def init(cfg: Config, cron: bool = False) -> int:
     log = get_logger("init")
     example = REPO_ROOT / "config.env.example"
     if not config_path() and example.exists():
@@ -60,7 +60,7 @@ def _install_cron(log) -> None:
     log.info("cron scheduled (every 15 min: gbc inbox)")
 
 
-def uninstall(cfg, purge: bool = False) -> int:
+def uninstall(cfg: Config, purge: bool = False) -> int:
     log = get_logger("uninstall")
     if shutil.which("crontab"):
         cur = subprocess.run(["crontab", "-l"], capture_output=True, text=True).stdout

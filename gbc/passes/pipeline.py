@@ -8,11 +8,12 @@ watermark scopes qa to items added since the last successful run (whole library 
 from datetime import datetime
 
 from .. import state
+from ..config import Config
 from ..logs import get_logger
 from . import import_, qa, verify
 
 
-def run(cfg, *, full: bool = False, src=None, reimport: bool = False) -> int:
+def run(cfg: Config, *, full: bool = False, src=None, reimport: bool = False) -> int:
     log = get_logger("pipeline")
     wm_old = None if full else state.get_watermark(cfg)
     scope = state.added_query(wm_old)        # qa scope: items added since last run ("" = whole library)

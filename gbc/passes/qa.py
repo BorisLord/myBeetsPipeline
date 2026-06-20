@@ -10,13 +10,14 @@ from pathlib import Path
 
 from .. import anomaly
 from ..beets import run_beet
+from ..config import Config
 from ..logs import get_logger
 
 JUNK = re.compile(r"https?://|www\.|\.(com|net|org|tk|br)|\bEAC\b|\bLame\b|\bLAMEB?\s*\d|CDex|Easy CD-DA|Tagged By"
                   r"|Encoded by|ripped by|Created with|meXPiracy|Autodesk|bandcamp|No Comment", re.I)
 
 
-def _lines(cfg, args):
+def _lines(cfg: Config, args):
     _, text = run_beet(cfg, args, overlay="qa.yaml", passname="qa", echo_lines=False)
     return [ln for ln in text.splitlines() if ln.strip()]
 
@@ -62,7 +63,7 @@ def _container_mismatch(path):
     return ""
 
 
-def run(cfg, scope: str = "") -> int:
+def run(cfg: Config, scope: str = "") -> int:
     log = get_logger("qa")
     sc = [scope] if scope else []
 
@@ -169,7 +170,7 @@ def run(cfg, scope: str = "") -> int:
     return 0
 
 
-def run_anomaly(cfg, scope: str = "") -> int:
+def run_anomaly(cfg: Config, scope: str = "") -> int:
     """Just the read-only name/anomaly scan (section 8), standalone."""
     log = get_logger("anomaly")
     sc = [scope] if scope else []

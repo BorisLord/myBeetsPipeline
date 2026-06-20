@@ -8,12 +8,13 @@ from pathlib import Path
 
 from .. import sidecars
 from ..beets import run_beet
+from ..config import Config
 from ..dedup import dedup
 from ..logs import get_logger
 from ..util import backup_db, count_items, prune_empty_dirs
 
 
-def run(cfg, src=None, reimport=False) -> int:
+def run(cfg: Config, src=None, reimport=False) -> int:
     log = get_logger("import")
     src = Path(src) if src else cfg.src
     if not src.is_dir():
