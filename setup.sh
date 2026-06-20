@@ -18,10 +18,11 @@ if ! have uv; then
   exit 1
 fi
 
-# beets via uv tool (verified extras: chroma -> pyacoustid, fetchart -> requests/Pillow, lastgenre -> pylast)
+# beets via uv tool (extras: chroma->pyacoustid, fetchart->requests/Pillow, lastgenre->pylast,
+# discogs->python3-discogs-client for the Discogs metadata source fallback)
 if ! have beet; then
   read -rp "  install beets now via 'uv tool'? [y/N] " a
-  if [ "$a" = y ] || [ "$a" = Y ]; then uv tool install 'beets[chroma,fetchart,lastgenre]'; fi
+  if [ "$a" = y ] || [ "$a" = Y ]; then uv tool install 'beets[chroma,fetchart,lastgenre,discogs]'; fi
   export PATH="$HOME/.local/bin:$PATH"
 fi
 

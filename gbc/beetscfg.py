@@ -104,7 +104,8 @@ def _warn_missing_plugins(config_text: str, log) -> None:
 def read_import(cfg: Config) -> BeetsImport:
     """`beet config` (resolved) -> the effective import op; warns if a plugin gbc depends on is absent."""
     log = get_logger("beetscfg")
-    _, text = run_beet(cfg, ["config"], passname="beetscfg", echo_lines=False)
+    # stdout-only: beet's stderr warnings (e.g. deprecations) would otherwise corrupt the YAML we parse
+    _, text = run_beet(cfg, ["config"], passname="beetscfg", echo_lines=False, merge_stderr=False)
     _warn_missing_plugins(text, log)
     bi = parse_import(text)
     log.info("beets import op = %s (source %s, clean %s)", bi.label,

@@ -13,6 +13,13 @@ class TestBeetsRunner(Base):
         self.assertIn("OUT line", text)
         self.assertIn("ERR line", text)
 
+    def test_merge_stderr_false_keeps_stdout_clean(self):
+        # `beet config` -> YAML on stdout; a warning on stderr must NOT pollute it (else beetscfg mis-parses)
+        self.cfg.beet = self.fake_beet(stdout="import:\n  copy: yes\n", stderr="discogs: deprecated noise\n", code=0)
+        _, text = run_beet(self.cfg, ["config"], passname="test", echo_lines=False, merge_stderr=False)
+        self.assertIn("copy: yes", text)
+        self.assertNotIn("deprecated noise", text)
+
     def test_returns_nonzero_code(self):
         self.cfg.beet = self.fake_beet(stderr="boom\n", code=3)
         rc, text = run_beet(self.cfg, ["x"], passname="test", echo_lines=False)

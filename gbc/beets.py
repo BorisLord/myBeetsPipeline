@@ -13,7 +13,7 @@ from .logs import get_logger
 
 
 def run_beet(cfg: Config, args, *, overlay: str | None = None, passname: str,
-             echo_lines: bool = True) -> tuple[int, str]:
+             echo_lines: bool = True, merge_stderr: bool = True) -> tuple[int, str]:
     """Run `beet [-c overlay] <args...>`. Returns (returncode, merged_output_text).
 
     echo_lines=True logs every output line (the run narrative: match decisions, fetchart, replaygain).
@@ -27,10 +27,13 @@ def run_beet(cfg: Config, args, *, overlay: str | None = None, passname: str,
     env = dict(os.environ, BEETSDIR=str(cfg.beetsdir))
     log.info("$ %s", " ".join(cmd))
     lines: list[str] = []
+    # default: merge stderr (beet logs its --pretend plan there). merge_stderr=False keeps stdout CLEAN for
+    # callers that PARSE structured output -- e.g. `beet config` YAML, which beet warnings on stderr corrupt.
+    err = subprocess.STDOUT if merge_stderr else subprocess.DEVNULL
     try:
         # errors=surrogateescape: non-UTF-8 file names round-trip identically to reclaim's sqlite BLOB
         # decode (so verdict keys match), and a stray byte never crashes the capture.
-        with subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        with subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=err,
                               text=True, errors="surrogateescape", bufsize=1, env=env) as proc:
             assert proc.stdout is not None     # PIPE is always set above
             for raw in proc.stdout:
