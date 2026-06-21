@@ -63,8 +63,8 @@ match:
     media: ['Digital Media|File', 'CD']
     original_year: yes
   max_rec:
-    missing_tracks: low
-    unmatched_tracks: low
+    missing_tracks: low        # missing tracks = INCOMPLETE album -> stays parked for manual curation
+    unmatched_tracks: strong   # extra tracks (bonus/hidden) = complete album + extras -> auto-accept (verify/qa are the net)
 
 # Skipped during import: hidden files + video files. Append your own quarantine/junk folder names here.
 ignore: ['.*', '*.mp4', '*.mov', '*.avi', '*.mkv', '*.m4v', '*.wmv', '*.flv', '*.ts', '*.mpg', '*.mpeg', '*.webm',
