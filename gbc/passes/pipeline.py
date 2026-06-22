@@ -1,4 +1,4 @@
-"""The pipeline: import -> convert -> verify -> acousticbrainz -> qa -> reclaim. `run` (manual) and `inbox`
+"""The pipeline: import -> convert -> verify -> acousticbrainz -> qa -> albumdedup -> reclaim. `run` + `inbox`
 (cron) both call this; only the trigger differs. convert runs BEFORE verify so every later pass operates
 identically on the converted (WMA->AAC, WAV/AIFF->FLAC) files, not the originals.
 
@@ -14,7 +14,7 @@ from datetime import datetime
 from .. import state
 from ..config import Config
 from ..logs import get_logger
-from . import acousticbrainz, convert, import_, qa, reclaim, verify
+from . import acousticbrainz, albumdedup, convert, import_, qa, reclaim, verify
 
 
 def run(cfg: Config, *, full: bool = False, src=None, reimport: bool = False) -> int:
@@ -42,6 +42,10 @@ def run(cfg: Config, *, full: bool = False, src=None, reimport: bool = False) ->
     except Exception:                        # AB downtime must never break the import pipeline
         log.exception("acousticbrainz pass errored (non-fatal)")
     qa.run(cfg, scope=scope, cull=True)      # audit + cull corrupt files -> quarantine/corrupt (never gates)
+    try:
+        albumdedup.run(cfg)                  # same album matched to MB + Discogs -> quarantine the lesser copy
+    except Exception:                        # album dedup must never break the import pipeline
+        log.exception("album dedup pass errored (non-fatal)")
     try:
         reclaim.run(cfg)                     # preserve-mode only: verified source albums -> quarantine
     except Exception:                        # reclaim must never break the import pipeline
