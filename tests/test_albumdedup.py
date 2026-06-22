@@ -36,29 +36,61 @@ class TestAlbumDedup(Base):
     def test_keeps_musicbrainz_quarantines_discogs(self):
         durs = ["3:00", "4:00", "5:00"]
         n, calls = self._run(self._make([
-            ("1", "Album Discogs", "12345", "256kbps", durs),     # Discogs (numeric mb id)
-            ("2", "Album MB", "a1b2-c3d4", "256kbps", durs),      # MusicBrainz (uuid)
+            ("1", "Power: The Essential", "12345", "256kbps", durs),       # Discogs (numeric mb id)
+            ("2", "Power - The Essential", "a1b2-c3d4", "256kbps", durs),   # MusicBrainz (uuid)
         ]))
         self.assertEqual(n, 1)
-        self.assertTrue((self.cfg.clean / "Artist" / "Album MB").is_dir())            # MB kept
-        self.assertFalse((self.cfg.clean / "Artist" / "Album Discogs").exists())      # Discogs moved out
-        self.assertTrue((self.cfg.dump / "duplicates" / "Artist" / "Album Discogs").is_dir())
+        self.assertTrue((self.cfg.clean / "Artist" / "Power - The Essential").is_dir())     # MB kept
+        self.assertFalse((self.cfg.clean / "Artist" / "Power: The Essential").exists())     # Discogs out
+        self.assertTrue((self.cfg.dump / "duplicates" / "Artist" / "Power: The Essential").is_dir())
         self.assertTrue(any(a[:3] == ["remove", "-a", "-f"] and "id:1" in a for a in calls))
 
     def test_prefers_higher_bitrate_when_same_source(self):
         durs = ["3:00", "4:00", "5:00"]
         n, _ = self._run(self._make([
-            ("1", "Album A", "x1-y2", "128kbps", durs),     # MB, low bitrate
-            ("2", "Album B", "x3-y4", "320kbps", durs),     # MB, high bitrate -> kept
+            ("1", "Hits Vol 1", "x1-y2", "128kbps", durs),        # MB, low bitrate
+            ("2", "Hits, Vol. 1", "x3-y4", "320kbps", durs),      # MB, high bitrate -> kept
         ]))
         self.assertEqual(n, 1)
-        self.assertTrue((self.cfg.clean / "Artist" / "Album B").is_dir())             # higher bitrate kept
-        self.assertFalse((self.cfg.clean / "Artist" / "Album A").exists())
+        self.assertTrue((self.cfg.clean / "Artist" / "Hits, Vol. 1").is_dir())
+        self.assertFalse((self.cfg.clean / "Artist" / "Hits Vol 1").exists())
+
+    def test_tolerant_match_different_rip(self):
+        # same album, DIFFERENT rip: each track drifts a few seconds (<= TOL) + close title -> deduped
+        n, _ = self._run(self._make([
+            ("1", "Dark Side", "11", "256kbps", ["3:00", "4:00", "5:00"]),        # Discogs
+            ("2", "The Dark Side", "a-b", "256kbps", ["3:05", "4:08", "5:10"]),   # MB, +5/8/10s drift
+        ]))
+        self.assertEqual(n, 1)
+        self.assertTrue((self.cfg.clean / "Artist" / "The Dark Side").is_dir())   # MB kept
+        self.assertFalse((self.cfg.clean / "Artist" / "Dark Side").exists())
+
+    def test_different_title_not_merged(self):
+        # same artist, same track count, durations within TOL, but UNRELATED titles -> NOT a duplicate
+        n, calls = self._run(self._make([
+            ("1", "Help", "11", "256kbps", ["2:00", "2:10", "2:20"]),
+            ("2", "Beatles for Sale", "a-b", "256kbps", ["2:02", "2:12", "2:22"]),
+        ]))
+        self.assertEqual(n, 0)
+        self.assertTrue((self.cfg.clean / "Artist" / "Help").is_dir())
+        self.assertTrue((self.cfg.clean / "Artist" / "Beatles for Sale").is_dir())
+        self.assertFalse(any(a and a[0] == "remove" for a in calls))
+
+    def test_different_volume_not_merged(self):
+        # same artist, same count, durations within TOL, similar title BUT different volume number -> NOT a dup
+        n, calls = self._run(self._make([
+            ("1", "Nova Classics Four", "11", "256kbps", ["3:00", "4:00", "5:00"]),
+            ("2", "Nova Classics Seven", "a-b", "256kbps", ["3:05", "4:08", "5:10"]),
+        ]))
+        self.assertEqual(n, 0)
+        self.assertTrue((self.cfg.clean / "Artist" / "Nova Classics Four").is_dir())
+        self.assertTrue((self.cfg.clean / "Artist" / "Nova Classics Seven").is_dir())
+        self.assertFalse(any(a and a[0] == "remove" for a in calls))
 
     def test_distinct_albums_not_touched(self):
         n, calls = self._run(self._make([
             ("1", "Album One", "11", "256kbps", ["3:00", "4:00", "5:00"]),
-            ("2", "Album Two", "22", "256kbps", ["3:30", "4:30", "5:30"]),   # different durations
+            ("2", "Album Two", "22", "256kbps", ["3:30", "4:30", "5:30"]),   # different durations + title
         ]))
         self.assertEqual(n, 0)
         self.assertTrue((self.cfg.clean / "Artist" / "Album One").is_dir())
