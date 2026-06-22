@@ -23,7 +23,8 @@ from ..sidecars import quarantine_dir, safe_move
 from ..util import backup_db
 
 APIKEY = os.environ.get("GBC_ACOUSTID_APIKEY", "1vOwZtEn")  # beets' shared key; set your own to avoid throttling
-MATCH_SCORE = 0.5   # AcoustID result score above which the file is a genuine match
+MATCH_SCORE = 0.5   # AcoustID result score above which the file CONFIRMS the tagged recording
+MISMATCH_SCORE = 0.9  # higher bar to REFUTE: audio matches a DIFFERENT recording this strongly -> tag likely wrong
 RETRIES = 4         # attempts on rate-limit / network error before giving up -> inconclusive
 SEP = "\x1f"        # US control char: can't appear in tags/paths and survives str.splitlines() (unlike \x1e)
 
@@ -33,27 +34,45 @@ def _acoustid_available() -> bool:
 
 
 def _file_verdict(path, mbid):
-    """('ok', present) once AcoustID answers conclusively, else ('error', False). present=True when the file's
-    OWN fingerprint matches list the tagged recording (mbid) -> genuine. False => the audio is something else
-    (unknown to AcoustID, or a different known song -> both are imposters if the tagged recording is known)."""
+    """('ok', present, mismatch) once AcoustID answers conclusively, else ('error', False, None).
+    present=True when the file's OWN fingerprint matches list the tagged recording (mbid) -> genuine. False =>
+    the audio is something else (unknown to AcoustID, or a different known song -> both are imposters if the
+    tagged recording is known). mismatch=(artist, title, score) when the audio instead matches a DIFFERENT
+    recording with high confidence (>= MISMATCH_SCORE) -> the tag is likely wrong (logged only, never acted on)."""
     import acoustid
     for attempt in range(RETRIES):
         try:
             dur, fp = acoustid.fingerprint_file(path)
-            resp = acoustid.lookup(APIKEY, fp, dur, meta="recordingids")
+            resp = acoustid.lookup(APIKEY, fp, dur, meta="recordings")
         except acoustid.FingerprintGenerationError:
-            return "error", False                       # can't fingerprint -> inconclusive (never act)
+            return "error", False, None                 # can't fingerprint -> inconclusive (never act)
         except acoustid.WebServiceError:
             time.sleep(2 ** attempt)
             continue
         if resp.get("status") != "ok":
             time.sleep(2 ** attempt)
             continue
+        results = resp.get("results") or []
         present = any(rec.get("id") == mbid
-                      for r in (resp.get("results") or []) if (r.get("score") or 0) >= MATCH_SCORE
+                      for r in results if (r.get("score") or 0) >= MATCH_SCORE
                       for rec in (r.get("recordings") or []))
-        return "ok", present
-    return "error", False
+        mismatch = None
+        if not present:                                 # audio != tag: is it CONFIDENTLY some other known recording?
+            for r in results:                           # AcoustID returns results best-score first
+                if (r.get("score") or 0) < MISMATCH_SCORE:
+                    break                               # sorted desc -> nothing below the bar is worth checking
+                for rec in (r.get("recordings") or []):
+                    if rec.get("id") == mbid:
+                        continue
+                    artist = ", ".join(a.get("name", "") for a in (rec.get("artists") or []))
+                    title = rec.get("title") or ""
+                    if artist or title:
+                        mismatch = (artist, title, round(r.get("score") or 0, 2))
+                        break
+                if mismatch:
+                    break
+        return "ok", present, mismatch
+    return "error", False, None
 
 
 def _official_known(mbid):
@@ -99,6 +118,7 @@ def run(cfg: Config, scope="") -> int:
         cache = {}
 
     moved, checked, incon, backed = [], 0, 0, False
+    mismatches = 0
     verdicts: dict[str, str] = {}
     for itemid, path, mbid, albumartist, album, year in rows:
         try:
@@ -108,10 +128,15 @@ def run(cfg: Config, scope="") -> int:
         key = f"{int(st.st_mtime)}:{st.st_size}:{mbid}"        # re-check only if the file changed
         verdict = cache.get(key)
         if verdict is None:
-            status, present = _file_verdict(path, mbid)
+            status, present, mismatch = _file_verdict(path, mbid)
             if status != "ok":
                 incon += 1
                 continue                                       # inconclusive -> not cached, retried next run
+            if mismatch:                                       # audio is confidently a DIFFERENT recording -> tag wrong
+                mismatches += 1
+                y = f" ({year[:4]})" if year and year[:4] not in ("", "0", "None") else ""
+                log.warning("MISMATCH: %s - %s%s | audio = %s - %s (%.2f) -- kept, tag likely wrong",
+                            albumartist, album, y, mismatch[0], mismatch[1], mismatch[2])
             if present:
                 verdict = "ok"
             else:
@@ -143,8 +168,8 @@ def run(cfg: Config, scope="") -> int:
     with cpath.open("w", encoding="utf-8") as fh:
         json.dump(cache, fh)
     _write_verdicts(cfg, verdicts)                             # genuine ("ok") paths drive the reclaim pass
-    log.info("=== fingerprint verify: %d new check(s), %d imposter(s) quarantined, %d inconclusive ===",
-             checked, len(moved), incon)
+    log.info("=== fingerprint verify: %d check(s), %d imposter(s) quarantined, %d mismatch(es), %d inconclusive ===",
+             checked, len(moved), mismatches, incon)
     if moved:
         log.info("  [IMPOSTER] %d track(s) (audio != tagged recording) moved to %s -- recoverable, never deleted",
                  len(moved), cfg.dump)
