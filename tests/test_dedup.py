@@ -61,6 +61,9 @@ class TestDedup(Base):
         self.assertTrue(a.exists())                  # lossless FLAC kept despite bitrate reading 0
         self.assertFalse(b.exists())                 # lossy MP3 quarantined
 
+    def test_dff_counts_as_lossless(self):
+        self.assertIn(".dff", dedup.LOSSLESS)        # DSDIFF is lossless -> must win the tiebreak like .dsf
+
     def test_dry_run_counts_but_moves_nothing(self):
         a, b = self._album("a.mp3", "b.mp3")
         meta = {str(a): ("t", 100, 320000), str(b): ("t", 100, 128000)}

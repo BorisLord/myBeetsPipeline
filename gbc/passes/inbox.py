@@ -1,6 +1,5 @@
-"""The cron door. Same pipeline as `run`, but triggered by a drop: take the import lock (bow out if busy),
-skip if nothing NEW to import (parse beet's --pretend plan -- which it writes to STDERR, hence the old
-gate bug), debounce until the drop finished copying, then run the pipeline.
+"""The cron door. Same pipeline as `run`, triggered by a drop: take the import lock (bow out if busy),
+debounce until the drop finished copying, skip if nothing NEW to import, then run the pipeline.
 """
 import re
 import time
@@ -14,18 +13,25 @@ from . import pipeline
 
 
 def _dir_size(path) -> int:
-    return sum(p.stat().st_size for p in Path(path).rglob("*") if p.is_file())
+    total = 0
+    for p in Path(path).rglob("*"):
+        try:                                 # file can vanish between is_file() and stat() mid-drop -> skip it
+            if p.is_file():
+                total += p.stat().st_size
+        except OSError:
+            continue
+    return total
 
 
 def has_new(plan: str) -> bool:
-    """True if beet's --pretend plan lists something to import. beets writes the plan to STDERR, so the
-    text must be captured from stderr (the old bash gate read stdout -> always empty -> never imported)."""
+    """True if beet's --pretend plan lists something to import. beet writes the plan to STDERR (callers must
+    capture stderr; reading stdout alone always looks empty)."""
     return bool(re.search(r"(?m)^(Album|Singleton):", plan))
 
 
 def _debounce(cfg: Config, interval: int = 20, max_wait: int = 1800) -> None:
-    """Wait until the source size is stable across two samples (the drop finished copying), but NEVER longer
-    than `max_wait`s -- a continuously-growing source must not wedge the import lock forever."""
+    """Wait until source size is stable across two samples (drop finished copying), capped at `max_wait`s so
+    a continuously-growing source can't wedge the import lock forever."""
     prev = -1
     deadline = time.monotonic() + max_wait
     while time.monotonic() < deadline:
@@ -46,8 +52,8 @@ def run(cfg: Config) -> int:
         if not cfg.src.exists() or not any(cfg.src.iterdir()):
             log.info("source empty -> exit")
             return 0
-        _debounce(cfg)                       # settle the drop BEFORE judging it: a still-copying tree can read as
-                                             # "nothing new" on a partial --pretend view and skip this whole tick
+        _debounce(cfg)                       # settle the drop BEFORE the has_new gate: a still-copying tree can
+                                             # show a partial --pretend plan and wrongly skip the whole tick
         _, plan = run_beet(cfg, ["import", "-q", "-i", "--pretend", str(cfg.src)],
                            passname="inbox", echo_lines=False)
         if not has_new(plan):

@@ -1,5 +1,6 @@
 import unittest
 from itertools import count
+from pathlib import Path
 from unittest import mock
 
 from gbc.lock import import_lock
@@ -20,6 +21,23 @@ class TestInboxGate(Base):
         self.cfg.beet = self.fake_beet(stderr="Skipped 1 paths.\n")   # --pretend plan on STDERR, nothing new
         self.assertEqual(inbox.run(self.cfg), 0)
         self.assertFalse((self.cfg.beetsdir / "gbc-state.json").exists())   # pipeline never ran
+
+    def test_dir_size_resilient_to_vanishing_file(self):
+        """A file disappearing between is_file() and stat() (drop still copying) must not crash the sampler."""
+        self.cfg.src.mkdir(parents=True, exist_ok=True)
+        (self.cfg.src / "a.bin").write_bytes(b"x" * 100)
+        (self.cfg.src / "b.bin").write_bytes(b"y" * 50)
+        real_stat = Path.stat
+
+        def flaky_stat(self, *a, **k):
+            if self.name == "b.bin":
+                raise FileNotFoundError              # vanished after is_file() returned True
+            return real_stat(self, *a, **k)
+
+        with mock.patch.object(Path, "is_file", lambda self: self.suffix == ".bin"), \
+             mock.patch.object(Path, "stat", flaky_stat):
+            size = inbox._dir_size(self.cfg.src)
+        self.assertEqual(size, 100)                  # a.bin counted, vanishing b.bin skipped, no crash
 
     def test_debounce_bounded_on_growing_source(self):
         clk = count(0, 600)                       # monotonic jumps 600s/call -> exceeds max_wait=1800 fast

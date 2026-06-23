@@ -6,7 +6,8 @@
 src="$1"
 dst="$2"
 br=$(ffprobe -v error -show_entries format=bit_rate -of csv=p=0 "$src" 2>/dev/null)
-k=$(( ${br:-128000} / 1000 ))
+case "$br" in ''|*[!0-9]*) br=128000 ;; esac   # ffprobe returns 'N/A' on some ASF -> fall back (avoid div-by-0)
+k=$(( br / 1000 ))
 [ "$k" -lt 48 ] && k=48
 [ "$k" -gt 256 ] && k=256
 ffmpeg -v error -i "$src" -y -vn -c:a libopus -b:a "${k}k" "$dst" || exit 1

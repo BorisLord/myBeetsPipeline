@@ -1,9 +1,7 @@
-"""Pre-import dedup: within each SOURCE album folder, drop duplicate audio files (same title +
-near-equal duration), keeping the best bitrate. The redundant copies go to quarantine (NEVER deleted),
-so a rare false positive stays recoverable. Runs before `beet import` so a duplicate track can't inflate
-the unmatched-tracks penalty and block an otherwise-good album. Conservative on purpose: only files that
-expose a title are considered, and same-title files whose durations differ by more than TOL are kept
-(distinct versions / reprises).
+"""Pre-import dedup: within each SOURCE album folder, quarantine duplicate audio (same title + near-equal
+duration), keeping the best bitrate -- NEVER deleted. Runs before `beet import` so a duplicate can't inflate
+the unmatched-tracks penalty and block a good album. Conservative: only titled files, same-title files
+beyond TOL apart are kept (distinct versions/reprises).
 """
 import json
 import os
@@ -14,10 +12,9 @@ from pathlib import Path
 from .logs import get_logger
 from .sidecars import AUDIO, quarantine_dir, safe_move
 
-# Two files compared here are the SAME track measured by the SAME ffprobe -> real duplicates are
-# near-identical in length, so the tolerance is tight (unlike sidecars' ±6s ffprobe-vs-beets comparison).
+# Same track via the SAME ffprobe -> tight tolerance (unlike sidecars' ±6s ffprobe-vs-beets comparison).
 TOL = 3   # seconds
-LOSSLESS = {".flac", ".wav", ".aif", ".aiff", ".alac", ".ape", ".wv", ".tta", ".dsf"}
+LOSSLESS = {".flac", ".wav", ".aif", ".aiff", ".alac", ".ape", ".wv", ".tta", ".dsf", ".dff"}
 
 
 def _log(log):
@@ -38,7 +35,7 @@ def _probe(path):
 
 
 def _album_tags(path):
-    """(albumartist|artist, album, year) from ffprobe tags -> names the quarantine sub-folder per album."""
+    """(albumartist|artist, album, year) from ffprobe tags -> names the per-album quarantine sub-folder."""
     try:
         out = subprocess.run(["ffprobe", "-v", "error", "-show_format", "-of", "json", "-i", str(path)],
                              capture_output=True, text=True).stdout
@@ -63,16 +60,15 @@ def dedup(src, dump, do_apply, log=None):
         groups = defaultdict(list)
         for p in paths:
             title, dur, br = _probe(p)
-            if title:                        # only dedup files that expose a title (safe key)
+            if title:                        # only dedup titled files (safe key)
                 groups[title].append((p, dur, br, Path(p).stat().st_size))
         for items in groups.values():
             if len(items) < 2:
                 continue
             durs = [d for _, d, _, _ in items if d > 0]
             if len(durs) != len(items) or max(durs) - min(durs) > TOL:
-                continue        # a probe failed (unverifiable) OR genuinely different lengths -> keep all (safe)
-            # lossless beats lossy FIRST (a FLAC whose ffprobe format bitrate reads 0 must not lose to a 320k
-            # MP3), then best bitrate, then largest file
+                continue        # probe failed OR genuinely different lengths -> keep all (safe)
+            # lossless FIRST (a FLAC whose ffprobe bitrate reads 0 must not lose to a 320k MP3), then bitrate, size
             items.sort(key=lambda x: (Path(x[0]).suffix.lower() in LOSSLESS, x[2], x[3]), reverse=True)
             keep = Path(items[0][0]).name
             for p, _, _, _ in items[1:]:
