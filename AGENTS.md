@@ -73,8 +73,13 @@ Paths come from `config.env` (copy of `config.env.example`, gitignored) — use 
   `[\W\s]+major` — our pass emits canonical "F#"/"F#m".
 - **acousticbrainz keeps a CURATED 14-field subset:** `bpm`+`initial_key` → file tags (Subsonic-visible); 7
   `mood_*` + `danceable` + `tonal` + `key_strength` (floats, typed via `types` so `mood_relaxed:0.9..` works)
-  + `moods_mirex` + `voice_instrumental` (strings) → db flex attrs. Deliberately DROP: genre taxonomies,
-  gender, timbre, ballroom rhythm, chord stats, average_loudness (redundant with ReplayGain), low-level DSP.
+  + `moods_mirex` + `voice_instrumental` (strings) → db flex attrs **and** injected into files as custom tags
+  (mutagen — beets has no native flex-attr file write). Applied via `beet modify` per recording, then a
+  `beet write` reconciliation; never a homemade `try_write` (it failed silently, leaving bpm in db not file).
+  Deliberately DROP: genre taxonomies, gender, timbre, ballroom rhythm, chord stats, average_loudness
+  (redundant with ReplayGain), low-level DSP.
+- **VA compilations matched via Discogs land `comp=False`** (albumartist=Various Artists but no comp flag);
+  import normalizes them to `comp=True` natively (`beet modify`) so players don't split the album by artist.
 
 ## Secrets
 
