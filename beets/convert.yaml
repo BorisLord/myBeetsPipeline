@@ -6,14 +6,15 @@
 # quality/bitrate; the helper sets the Opus bitrate FROM the source bitrate (adaptive, [48,256] kbps) so a
 # bad source stays low-bitrate (still flagged by qa's <192k check, never masked) and a good one isn't
 # downscaled. Originals are MOVED to a quarantine subdir (keep_new) -- NEVER deleted. CLEAN lib only.
-plugins: convert
+plugins: convert     # scrub's `auto` only hooks the IMPORT pipeline, not convert -> the encode helpers strip
+                     # source metadata (-map_metadata -1) instead; beets then writes clean tags + re-embeds art
 convert:
   formats:
     opus:
       command: sh @HELPERS@/wma2opus.sh $source $dest    # @HELPERS@ filled by `gbc init` (-> <repo>/helpers)
       extension: opus
     flac:
-      command: ffmpeg -i $source -y -vn -acodec flac $dest
+      command: sh @HELPERS@/flac-encode.sh $source $dest  # validates the FLAC decodes before keep_new moves the original
       extension: flac
   keep_new: yes               # converted file replaces the item in the library; original -> dest (quarantine)
   embed: yes                  # re-embed album art into the converted file

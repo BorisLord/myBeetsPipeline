@@ -10,7 +10,10 @@ case "$br" in ''|*[!0-9]*) br=128000 ;; esac   # ffprobe returns 'N/A' on some A
 k=$(( br / 1000 ))
 [ "$k" -lt 48 ] && k=48
 [ "$k" -gt 256 ] && k=256
-ffmpeg -v error -i "$src" -y -vn -c:a libopus -b:a "${k}k" "$dst" || exit 1
+# -map_metadata -1: drop source container junk (ASF/WMA foreign frames, broken art) -- beets re-writes clean
+# tags + re-embeds art afterward (keep_new). This is what makes the converted file clean (scrub's `auto` hooks
+# only the import pipeline, never convert).
+ffmpeg -v error -i "$src" -y -vn -map_metadata -1 -c:a libopus -b:a "${k}k" "$dst" || exit 1
 # Validate the Opus actually decodes BEFORE returning 0: beets' keep_new moves the WMA original to quarantine
 # only when this command SUCCEEDS, so a non-zero exit here keeps the original safely in place (never lose the
 # only good copy to a silently-broken encode). -xerror makes a bad stream fail the decode.
