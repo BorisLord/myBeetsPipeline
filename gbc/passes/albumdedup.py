@@ -12,7 +12,7 @@ from ..beets import run_beet
 from ..config import Config
 from ..logs import get_logger
 from ..sidecars import quarantine_dir, safe_move
-from ..util import backup_db, prune_empty_dirs
+from ..util import backup_db, length_secs, prune_empty_dirs
 
 SEP = "\x1f"
 MINTRACKS = 3   # >=3: same artist + count + all within TOL between DISTINCT albums is ~nil
@@ -48,22 +48,6 @@ def _title_close(t1: str, t2: str) -> bool:
     return _numbers(t1) == _numbers(t2)
 
 
-def _secs(s: str) -> int:
-    """beets' $length is 'M:SS' (or 'H:MM:SS') -> whole seconds."""
-    s = s.strip()
-    if not s:
-        return 0
-    try:
-        if ":" in s:
-            v = 0.0
-            for part in s.split(":"):
-                v = v * 60 + float(part)
-            return round(v)
-        return round(float(s))
-    except ValueError:
-        return 0
-
-
 def _is_mb(mb_albumid: str) -> bool:
     return "-" in (mb_albumid or "")   # MusicBrainz album ids are UUIDs; Discogs ids are bare integers
 
@@ -83,7 +67,7 @@ def run(cfg: Config, *, do_apply: bool = True) -> int:
         aid, albumartist, album, year, length, bitrate, mb, path = p[:8]
         a = albums.setdefault(aid, {"artist": albumartist, "album": album, "year": year, "mb": mb,
                                     "durs": [], "br": 0, "folder": Path(path).parent})
-        a["durs"].append(_secs(length))
+        a["durs"].append(length_secs(length))
         digits = re.sub(r"\D", "", bitrate)
         a["br"] = max(a["br"], int(digits) if digits else 0)
 

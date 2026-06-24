@@ -23,6 +23,24 @@ def backup_db(cfg: Config, tag: str, log) -> None:
         log.info("backup %s -> %s", lib.name, dest.name)
 
 
+def length_secs(s: str) -> int:
+    """Parse beets' `$length` format ('M:SS', or 'H:MM:SS') into whole seconds. Used to read track durations
+    from `beet ls` natively (the only template beets exposes; it floors to whole seconds -- callers correlate
+    with a tolerance that absorbs the <=1s floor-vs-round difference vs ffprobe-measured source durations)."""
+    s = s.strip()
+    if not s:
+        return 0
+    try:
+        if ":" in s:
+            v = 0.0
+            for part in s.split(":"):
+                v = v * 60 + float(part)
+            return round(v)
+        return round(float(s))
+    except ValueError:
+        return 0
+
+
 def count_items(cfg: Config, args, passname: str) -> int:
     """Count items/albums matching `beet <args>`, silently; logged under the caller's pass."""
     _, text = run_beet(cfg, args, passname=passname, echo_lines=False)

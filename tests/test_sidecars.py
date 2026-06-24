@@ -1,5 +1,4 @@
 import json
-import sqlite3
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -48,16 +47,12 @@ class TestSidecars(Base):
         for i in (1, 2, 3):
             (clean / f"{i:02d} - s.flac").write_text("x")
         (clean / "cover.jpg").write_text("existing")          # clean already has a cover
-        db = self.tmp / "library.db"
-        con = sqlite3.connect(db)
-        con.execute("CREATE TABLE items (path TEXT, length REAL)")
-        for i, sec in zip((1, 2, 3), (10, 20, 30), strict=True):
-            con.execute("INSERT INTO items VALUES (?,?)", (str(clean / f"{i:02d} - s.flac"), float(sec)))
-        con.execute("INSERT INTO items VALUES (?,?)", (str(self.tmp / "gone" / "x.flac"), 99.0))  # stale db dir
-        con.commit()
-        con.close()
-
-        sidecars.apply(str(snapf), str(db), str(self.tmp / "clean"), str(self.tmp / "dump"), True)
+        # clean items are read NATIVELY now: build the `beet ls -f '$path\t$length'` output (M:SS) + a stale dir
+        ls_lines = [f"{clean / f'{i:02d} - s.flac'}\t{sec // 60}:{sec % 60:02d}"
+                    for i, sec in zip((1, 2, 3), (10, 20, 30), strict=True)]
+        ls_lines.append(f"{self.tmp / 'gone' / 'x.flac'}\t1:39")          # 99s, stale db dir (clean dir gone)
+        with mock.patch.object(sidecars, "run_beet", lambda cfg, a, **k: (0, "\n".join(ls_lines))):
+            sidecars.apply(self.cfg, str(snapf), str(self.tmp / "dump"), True)
 
         self.assertTrue((clean / "booklet.pdf").exists())          # booklet carried into clean
         self.assertFalse((alb / "booklet.pdf").exists())

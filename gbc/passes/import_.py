@@ -25,6 +25,18 @@ def _beet_import(cfg: Config, src: Path, reimport: bool, log) -> int:
     return rc
 
 
+def _normalize_va_comp(cfg: Config, log) -> None:
+    """A Various-Artists compilation matched via Discogs (or an MB release without the VA flag) lands with
+    albumartist='Various Artists' but comp=False -- an inconsistency that fragments the album in players.
+    Normalize it natively: `beet modify` comp=1 wherever the album artist is VA but comp is unset (writes the
+    DB + the compilation tag; -M never moves)."""
+    n = count_items(cfg, ["ls", "albumartist::Various Artists", "comp:False"], "import")
+    if n:
+        run_beet(cfg, ["modify", "-y", "-M", "albumartist::Various Artists", "comp:False", "comp=1"],
+                 passname="import", echo_lines=False)
+        log.info("normalised %d Various-Artists track(s): comp False -> True (compilation flag)", n)
+
+
 def run(cfg: Config, src=None, reimport=False) -> int:
     log = get_logger("import")
     src = Path(src) if src else cfg.src
@@ -41,7 +53,7 @@ def run(cfg: Config, src=None, reimport=False) -> int:
         try:
             sidecars.snapshot(str(src), snap, log)                  # snapshot BEFORE import, while source has its audio
             rc = _beet_import(cfg, src, reimport, log)
-            sidecars.apply(snap, str(cfg.library), str(cfg.clean), str(cfg.dump), True, log)
+            sidecars.apply(cfg, snap, str(cfg.dump), True, log)
             sidecars.prune_shells(str(src), str(cfg.dump), True, log)
             prune_empty_dirs(src)
         finally:
@@ -49,6 +61,8 @@ def run(cfg: Config, src=None, reimport=False) -> int:
     else:
         log.info("source preserved (beets import=%s) -> dedup/sidecars/prune skipped; source untouched", bi.label)
         rc = _beet_import(cfg, src, reimport, log)
+
+    _normalize_va_comp(cfg, log)               # VA-but-comp=False (Discogs/non-VA-MB matches) -> comp=True
 
     art_exts = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
     covers = sum(1 for p in cfg.clean.rglob("cover.*") if p.suffix.lower() in art_exts) if cfg.clean.exists() else 0

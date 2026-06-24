@@ -10,15 +10,15 @@ scoped, so older albums are revisited with `gbc run --all` (logged "unverified-t
 """
 import json
 import os
-import sqlite3
 from collections import defaultdict
-from contextlib import closing
 from pathlib import Path
 
 from .. import beetscfg
+from ..beets import run_beet
 from ..config import Config
 from ..logs import get_logger
 from ..sidecars import AUDIO, durs_of, matches, quarantine_dir, safe_move
+from ..util import length_secs
 
 VERDICTS = "gbc-verify-verdicts.json"
 
@@ -38,25 +38,23 @@ def _source_albums(src: str) -> dict[str, list[int]]:
     return out
 
 
-def _dec(v):
-    return v.decode("utf-8", "surrogateescape") if isinstance(v, bytes) else ("" if v is None else str(v))
-
-
-def _clean_albums(db: str, clean_root: str) -> dict[str, dict]:
-    """beets items grouped by clean album dir -> {durs, ids, meta=(albumartist, album, year)}. ids (not paths)
-    so reclaim matches verify regardless of path-rendering differences."""
-    with closing(sqlite3.connect(f"file:{db}?mode=ro", uri=True)) as con:
-        rows = con.execute("SELECT id, path, length, albumartist, album, year FROM items").fetchall()
+def _clean_albums(cfg: Config) -> dict[str, dict]:
+    """beets items grouped by clean album dir -> {durs, ids, meta=(albumartist, album, year)}. Read NATIVELY
+    via `beet ls` ($path is absolute, no sqlite-schema coupling); ids (not paths) so reclaim matches verify
+    regardless of path-rendering differences. Durations come from `$length` (M:SS) via length_secs."""
+    _, text = run_beet(cfg, ["ls", "-f", "$id\t$path\t$length\t$albumartist\t$album\t$year"],
+                       passname="reclaim", echo_lines=False)
     out: dict[str, dict] = defaultdict(lambda: {"durs": [], "ids": [], "meta": ("", "", "")})
-    for (itemid, path, length, albumartist, album, year) in rows:
-        pp = Path(_dec(path))
-        if not pp.is_absolute():                       # beets >=2.10 stores paths relative to the lib root
-            pp = Path(clean_root) / pp
-        d = out[str(pp.parent)]
-        d["durs"].append(round(length or 0))
-        d["ids"].append(str(itemid))
+    for line in text.splitlines():
+        parts = line.split("\t")
+        if len(parts) < 6 or not parts[0] or not parts[1]:
+            continue
+        itemid, path, length, albumartist, album, year = parts[:6]
+        d = out[str(Path(path).parent)]
+        d["durs"].append(length_secs(length))
+        d["ids"].append(itemid)
         a, al, y = d["meta"]                            # fill each field from the first non-empty track value
-        d["meta"] = (a or _dec(albumartist), al or _dec(album), y or _dec(year))
+        d["meta"] = (a or albumartist, al or album, y or year)
     for v in out.values():
         v["durs"].sort()
     return out
@@ -77,7 +75,7 @@ def run(cfg: Config, log=None) -> int:
         verdicts = {}
 
     src_albums = _source_albums(str(cfg.src))
-    clean_albums = _clean_albums(str(cfg.library), str(cfg.clean))
+    clean_albums = _clean_albums(cfg)
     src_root = str(Path(cfg.src).resolve())
 
     # Correlate source<->clean by duration-multiset, keep only bijective pairs (see module docstring).

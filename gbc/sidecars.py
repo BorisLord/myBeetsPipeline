@@ -7,13 +7,14 @@ import json
 import os
 import re
 import shutil
-import sqlite3
 import subprocess
 from collections import defaultdict
-from contextlib import closing, suppress
+from contextlib import suppress
 from pathlib import Path
 
+from .beets import run_beet
 from .logs import get_logger
+from .util import length_secs
 
 
 def safe_move(src, dst, log) -> bool:
@@ -108,21 +109,21 @@ def snapshot(src, out, log=None):
     return len(snap)
 
 
-def apply(snapfile, db, clean_root, dump, do_apply, log=None):
+def apply(cfg, snapfile, dump, do_apply, log=None):
     log = _log(log)
     snap = json.loads(Path(snapfile).read_text(encoding="utf-8"))
     if not snap:
         log.info("nothing to carry")
         return
-    with closing(sqlite3.connect(f"file:{db}?mode=ro", uri=True)) as con:
-        rows = con.execute("SELECT path, length FROM items").fetchall()
+    # read clean items NATIVELY via `beet ls` ($path absolute, no sqlite-schema coupling); group durations
+    # (from $length M:SS) by album dir to match each snapshot's audio-duration multiset.
+    _, text = run_beet(cfg, ["ls", "-f", "$path\t$length"], passname="sidecars", echo_lines=False)
     dst = defaultdict(list)
-    for (path, length) in rows:
-        p = path.decode("utf-8", "surrogateescape") if isinstance(path, bytes) else path
-        pp = Path(p)
-        if not pp.is_absolute():                       # beets >=2.10 stores paths relative to lib root
-            pp = Path(clean_root) / pp
-        dst[pp.parent].append(round(length or 0))
+    for line in text.splitlines():
+        path, _, length = line.partition("\t")
+        if not path:
+            continue
+        dst[Path(path).parent].append(length_secs(length))
     moved = dumped = miss = ambig = stale = 0
     for ddir, lengths in dst.items():
         if not ddir.is_dir():           # stale db: clean dir gone -> skip, can't carry (no crash)

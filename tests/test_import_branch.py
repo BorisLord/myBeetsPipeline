@@ -42,5 +42,24 @@ class TestImportBranch(Base):
         self.assertEqual(self._run_with(BeetsImport(link=True)), ["import"])
 
 
+class TestNormalizeVAComp(Base):
+    """Post-import: VA albums left comp=False (Discogs/non-VA-MB matches) are flipped to comp=True natively."""
+
+    def test_modifies_va_comp_false_to_true(self):
+        calls = []
+        with mock.patch.object(import_, "count_items", lambda *a, **k: 3), \
+             mock.patch.object(import_, "run_beet", lambda cfg, a, **k: calls.append(a) or (0, "")):
+            import_._normalize_va_comp(self.cfg, mock.MagicMock())
+        cmd = next(c for c in calls if c and c[0] == "modify")
+        self.assertEqual(cmd, ["modify", "-y", "-M", "albumartist::Various Artists", "comp:False", "comp=1"])
+
+    def test_noop_when_none_inconsistent(self):
+        calls = []
+        with mock.patch.object(import_, "count_items", lambda *a, **k: 0), \
+             mock.patch.object(import_, "run_beet", lambda cfg, a, **k: calls.append(a) or (0, "")):
+            import_._normalize_va_comp(self.cfg, mock.MagicMock())
+        self.assertFalse(any(c and c[0] == "modify" for c in calls))   # nothing inconsistent -> no modify call
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1,7 +1,26 @@
 import unittest
 
-from gbc.util import prune_empty_dirs
+from gbc.util import length_secs, prune_empty_dirs
 from tests.base import Base
+
+
+class TestLengthSecs(unittest.TestCase):
+    """Parse beets' `$length` ('M:SS' / 'H:MM:SS') -> whole seconds (used to read durations via `beet ls`)."""
+
+    def test_m_ss(self):
+        self.assertEqual(length_secs("2:06"), 126)
+        self.assertEqual(length_secs("0:10"), 10)
+        self.assertEqual(length_secs("1:30"), 90)
+        self.assertEqual(length_secs("73:20"), 4400)        # minutes can exceed 59 in beets' format
+
+    def test_h_mm_ss(self):
+        self.assertEqual(length_secs("1:02:03"), 3723)
+
+    def test_bare_and_empty_and_garbage(self):
+        self.assertEqual(length_secs("225"), 225)           # bare seconds
+        self.assertEqual(length_secs(""), 0)
+        self.assertEqual(length_secs("   "), 0)
+        self.assertEqual(length_secs("N/A"), 0)             # unparseable -> 0, never raises
 
 
 class TestPruneEmptyDirs(Base):
