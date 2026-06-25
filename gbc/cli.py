@@ -6,7 +6,7 @@ from . import admin
 from . import config as configmod
 from .lock import import_lock
 from .logs import configure
-from .passes import acousticbrainz, convert, import_, inbox, pipeline, qa, reclaim, verify
+from .passes import acousticbrainz, convert, import_, inbox, nova, pipeline, qa, reclaim, singletons, upgrade, verify
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -19,6 +19,12 @@ def _build_parser() -> argparse.ArgumentParser:
     pi = sub.add_parser("import", help="album-match import only (art/genres/replaygain run automatically)")
     pi.add_argument("source", nargs="?", help="source dir (default: MUSIC_SRC)")
     pi.add_argument("--reimport", action="store_true", help="re-evaluate already-seen folders (beets -I)")
+    ps = sub.add_parser("singletons", help="recover LOOSE source tracks as singletons (-> _Singles/)")
+    ps.add_argument("source", nargs="?", help="source dir (default: MUSIC_SRC)")
+    ps.add_argument("--reimport", action="store_true", help="re-evaluate already-seen folders (beets -I)")
+    ps.add_argument("--apply", action="store_true",
+                    help="execute the reassembly (re-tag Nova + promote now-complete albums out of _Singles/); "
+                         "without it those steps only report")
     pq = sub.add_parser("qa", help="read-only technical audit")
     pq.add_argument("query", nargs="?", default="", help="scope query (default: whole library)")
     pa = sub.add_parser("anomaly", help="read-only name/anomaly scan only")
@@ -29,6 +35,11 @@ def _build_parser() -> argparse.ArgumentParser:
     pab = sub.add_parser("acousticbrainz", help="fetch BPM/key/mood metadata from AcousticBrainz")
     pab.add_argument("query", nargs="?", default="", help="scope query (default: whole library)")
     sub.add_parser("convert", help="normalise formats (WMA->AAC, WAV/AIFF->FLAC; originals -> quarantine)")
+    pnv = sub.add_parser("nova", help="[detachable] classify reconstructable Radio-Nova compils from the library")
+    pnv.add_argument("--refresh-cache", action="store_true", help="re-fetch the Nova tracklists from MusicBrainz")
+    pup = sub.add_parser("upgrade", help="replace a clean album with a better source copy (also runs in the pipeline)")
+    pup.add_argument("source", nargs="?", help="source dir to scan (default: MUSIC_SRC)")
+    pup.add_argument("--apply", action="store_true", help="execute the swap (default: report only)")
     pini = sub.add_parser("init", help="deploy config + beets overlays (+ optional cron)")
     pini.add_argument("--cron", action="store_true", help="also schedule `gbc inbox` every 15 min")
     pun = sub.add_parser("uninstall", help="remove tooling (never your music)")
@@ -49,6 +60,9 @@ def main(argv=None) -> int:
     if args.cmd == "import":
         with import_lock(cfg, blocking=True):
             return import_.run(cfg, src=args.source, reimport=args.reimport)
+    if args.cmd == "singletons":
+        with import_lock(cfg, blocking=True):
+            return singletons.run(cfg, src=args.source, reimport=args.reimport, apply=args.apply)
     if args.cmd == "qa":
         return qa.run(cfg, scope=args.query)
     if args.cmd == "anomaly":
@@ -61,6 +75,11 @@ def main(argv=None) -> int:
             return 0
     if args.cmd == "acousticbrainz":
         return acousticbrainz.run(cfg, scope=args.query)
+    if args.cmd == "nova":
+        return nova.run(cfg, refresh=args.refresh_cache)
+    if args.cmd == "upgrade":
+        with import_lock(cfg, blocking=True):
+            return upgrade.run(cfg, src=args.source, apply=args.apply)
     if args.cmd == "convert":
         with import_lock(cfg, blocking=True):
             return convert.run(cfg)

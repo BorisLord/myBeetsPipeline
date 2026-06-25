@@ -4,7 +4,7 @@ from unittest import mock
 
 from gbc import admin, cli
 from gbc import config as configmod
-from gbc.passes import convert, import_, pipeline, qa, reclaim
+from gbc.passes import convert, import_, pipeline, qa, reclaim, singletons
 from tests.base import Base
 
 
@@ -38,6 +38,18 @@ class TestCliDispatch(Base):
              mock.patch.object(configmod, "load", lambda: self.cfg), \
              mock.patch.object(import_, "run", lambda c, src=None, reimport=False: 0):
             self.assertEqual(cli.main(["import"]), 0)
+
+    def test_singletons_takes_lock_and_routes(self):
+        seen = {}
+        with mock.patch.object(cli, "configure", lambda *a, **k: None), \
+             mock.patch.object(configmod, "load", lambda: self.cfg), \
+             mock.patch.object(singletons, "run",
+                               lambda c, src=None, reimport=False, apply=False:
+                               seen.update(src=src, reimport=reimport, apply=apply) or 0):
+            self.assertEqual(cli.main(["singletons", "/x", "--reimport", "--apply"]), 0)
+        self.assertEqual(seen.get("src"), "/x")
+        self.assertTrue(seen.get("reimport"))
+        self.assertTrue(seen.get("apply"))
 
     def test_convert_takes_lock_and_routes(self):
         with mock.patch.object(cli, "configure", lambda *a, **k: None), \
