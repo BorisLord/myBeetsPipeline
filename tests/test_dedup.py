@@ -62,7 +62,8 @@ class TestDedup(Base):
         self.assertFalse(b.exists())                 # lossy MP3 quarantined
 
     def test_dff_counts_as_lossless(self):
-        self.assertIn(".dff", dedup.LOSSLESS)        # DSDIFF is lossless -> must win the tiebreak like .dsf
+        from gbc import quality
+        self.assertEqual(quality.rank(".dff"), 3)    # DSDIFF is lossless -> wins the quality tiebreak like .dsf
 
     def test_dry_run_counts_but_moves_nothing(self):
         a, b = self._album("a.mp3", "b.mp3")

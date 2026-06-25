@@ -10,11 +10,11 @@ from collections import defaultdict
 from pathlib import Path
 
 from .logs import get_logger
+from .quality import eff, rank
 from .sidecars import AUDIO, quarantine_dir, safe_move
 
 # Same track via the SAME ffprobe -> tight tolerance (unlike sidecars' ±6s ffprobe-vs-beets comparison).
 TOL = 3   # seconds
-LOSSLESS = {".flac", ".wav", ".aif", ".aiff", ".alac", ".ape", ".wv", ".tta", ".dsf", ".dff"}
 
 
 def _log(log):
@@ -22,7 +22,8 @@ def _log(log):
 
 
 def _probe(path):
-    """(title_key, duration_seconds, bitrate) for an audio file; title_key='' if unreadable/untitled."""
+    """(title_key, duration_seconds, bitrate_kbps) for an audio file; title_key='' if unreadable/untitled.
+    kbps (not raw bps) so `eff()` is on the same scale as upgrade/albumdedup."""
     try:
         out = subprocess.run(["ffprobe", "-v", "error", "-show_format", "-of", "json", "-i", str(path)],
                              capture_output=True, text=True).stdout
@@ -31,7 +32,7 @@ def _probe(path):
         return "", 0, 0
     tags = {k.lower(): v for k, v in (fmt.get("tags") or {}).items()}
     title = (tags.get("title") or "").strip().casefold()
-    return title, round(float(fmt.get("duration") or 0)), int(fmt.get("bit_rate") or 0)
+    return title, round(float(fmt.get("duration") or 0)), int(fmt.get("bit_rate") or 0) // 1000
 
 
 def _album_tags(path):
@@ -68,8 +69,9 @@ def dedup(src, dump, do_apply, log=None):
             durs = [d for _, d, _, _ in items if d > 0]
             if len(durs) != len(items) or max(durs) - min(durs) > TOL:
                 continue        # probe failed OR genuinely different lengths -> keep all (safe)
-            # lossless FIRST (a FLAC whose ffprobe bitrate reads 0 must not lose to a 320k MP3), then bitrate, size
-            items.sort(key=lambda x: (Path(x[0]).suffix.lower() in LOSSLESS, x[2], x[3]), reverse=True)
+            # quality FIRST (lossless tier, so a FLAC whose ffprobe bitrate reads 0 never loses to a 320k MP3),
+            # then codec-normalised bitrate (256k Opus > 320k MP3), then file size
+            items.sort(key=lambda x: (rank(Path(x[0]).suffix), eff(Path(x[0]).suffix, x[2]), x[3]), reverse=True)
             keep = Path(items[0][0]).name
             for p, _, _, _ in items[1:]:
                 qd = quarantine_dir(dump, "duplicates", *_album_tags(p), fallback=Path(folder).name)

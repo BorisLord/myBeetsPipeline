@@ -9,14 +9,17 @@ SEP = albumdedup.SEP
 
 class TestAlbumDedup(Base):
     def _make(self, specs):
-        """specs: [(album_id, album_title, mb_albumid, bitrate, [durations])] -- all share albumartist
-        'Artist'. Creates the folders + returns the fake `beet ls` text (8 SEP-joined fields)."""
+        """specs: [(album_id, album_title, mb_albumid, bitrate, [durations])] (+ optional 6th = file ext,
+        default '.m4a') -- all share albumartist 'Artist'. Creates the folders + returns the fake `beet ls`
+        text (8 SEP-joined fields)."""
         lines = []
-        for aid, title, mb, br, durs in specs:
+        for spec in specs:
+            aid, title, mb, br, durs = spec[:5]
+            ext = spec[5] if len(spec) > 5 else ".m4a"
             folder = self.cfg.clean / "Artist" / title
             folder.mkdir(parents=True)
             for i, dur in enumerate(durs):
-                f = folder / f"{i:02d}.m4a"
+                f = folder / f"{i:02d}{ext}"
                 f.write_bytes(b"x")
                 lines.append(SEP.join([aid, "Artist", title, "2001", dur, br, mb, str(f)]))
         return "\n".join(lines)
@@ -44,6 +47,18 @@ class TestAlbumDedup(Base):
         self.assertFalse((self.cfg.clean / "Artist" / "Power: The Essential").exists())     # Discogs out
         self.assertTrue((self.cfg.dump / "duplicates" / "Artist" / "Power: The Essential").is_dir())
         self.assertTrue(any(a[:3] == ["remove", "-a", "-f"] and "id:1" in a for a in calls))
+
+    def test_quality_beats_source_flac_discogs_over_mp3_mb(self):
+        # same album: a FLAC matched via Discogs vs an MP3 matched via MB -> keep the FLAC (quality > source)
+        durs = ["3:00", "4:00", "5:00"]
+        n, calls = self._run(self._make([
+            ("1", "Hits", "11", "900kbps", durs, ".flac"),        # Discogs FLAC
+            ("2", "The Hits", "a-b", "320kbps", durs, ".mp3"),    # MB MP3
+        ]))
+        self.assertEqual(n, 1)
+        self.assertTrue((self.cfg.clean / "Artist" / "Hits").is_dir())        # FLAC (Discogs) kept: quality > source
+        self.assertFalse((self.cfg.clean / "Artist" / "The Hits").exists())   # MP3 (MB) quarantined
+        self.assertTrue(any(a[:3] == ["remove", "-a", "-f"] and "id:2" in a for a in calls))
 
     def test_prefers_higher_bitrate_when_same_source(self):
         durs = ["3:00", "4:00", "5:00"]

@@ -1,16 +1,18 @@
 """Pass -- de-duplicate ALBUMS in the CLEAN library. The same album imported twice can match two DIFFERENT
 releases (MusicBrainz vs Discogs) -> different mb_albumid, so beets' mb_albumid-keyed duplicate_action keeps
-both. We correlate by CONTENT (same albumartist + track-duration multiset), keep the best copy (MusicBrainz >
-Discogs, then bitrate), quarantine the rest -- NEVER deleted; library.db backed up first. Runs in BOTH import
-modes (dedup.py is within-folder, track-level, move-mode only -- it cannot see this).
+both. We correlate by CONTENT (same albumartist + track-duration multiset), keep the BEST-QUALITY copy (lossless >
+lossy, then codec-normalised bitrate; MB > Discogs only as an equal-quality tiebreak), quarantine the rest --
+NEVER deleted; library.db backed up first. Runs in BOTH import modes (dedup.py is within-folder, track-level,
+move-mode only -- it cannot see this).
 """
 import re
-from collections import defaultdict
+from collections import Counter, defaultdict
 from pathlib import Path
 
 from ..beets import run_beet
 from ..config import Config
 from ..logs import get_logger
+from ..quality import eff, rank
 from ..sidecars import quarantine_dir, safe_move
 from ..util import backup_db, length_secs, prune_empty_dirs
 
@@ -66,10 +68,14 @@ def run(cfg: Config, *, do_apply: bool = True) -> int:
             continue
         aid, albumartist, album, year, length, bitrate, mb, path = p[:8]
         a = albums.setdefault(aid, {"artist": albumartist, "album": album, "year": year, "mb": mb,
-                                    "durs": [], "br": 0, "folder": Path(path).parent})
+                                    "durs": [], "br": 0, "exts": Counter(), "folder": Path(path).parent})
         a["durs"].append(length_secs(length))
+        a["exts"][Path(path).suffix.lower()] += 1
         digits = re.sub(r"\D", "", bitrate)
         a["br"] = max(a["br"], int(digits) if digits else 0)
+    for a in albums.values():                      # format tier + codec-normalised bitrate, for the keeper choice
+        ext = a["exts"].most_common(1)[0][0] if a["exts"] else ""
+        a["rank"], a["ebr"] = rank(ext), eff(ext, a["br"])
 
     # bucket by (artist, track count), cluster by TOLERANT duration match -- an exact multiset misses the
     # same album ripped differently (a few seconds drift per track).
@@ -98,8 +104,9 @@ def run(cfg: Config, *, do_apply: bool = True) -> int:
 
     moved = 0
     for aids in dup_groups:
-        # keeper: MusicBrainz > Discogs, then bitrate, then lowest id (deterministic)
-        keeper = max(aids, key=lambda i: (_is_mb(albums[i]["mb"]), albums[i]["br"], -int(i)))
+        # keeper: QUALITY first (lossless > lossy, then codec-normalised bitrate), MB > Discogs only as an
+        # equal-quality tiebreak, then lowest id (deterministic) -- so a FLAC-via-Discogs beats an MP3-via-MB
+        keeper = max(aids, key=lambda i: (albums[i]["rank"], albums[i]["ebr"], _is_mb(albums[i]["mb"]), -int(i)))
         keeper_folder = Path(albums[keeper]["folder"]).resolve()
         for aid in aids:
             if aid == keeper:
