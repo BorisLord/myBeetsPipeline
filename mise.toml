@@ -25,6 +25,14 @@ run = "ruff check --fix gbc tests"
 description = "Static type check (mypy)"
 run = "uv run --with mypy mypy gbc --ignore-missing-imports"
 
+[tasks.upgrade]
+description = "Bump everything — mise tools (uv/ruff), locked Python deps, and the uv-installed CLIs (beets/gbc)"
+run = """
+mise upgrade           # uv + ruff to latest (python stays pinned 3.13)
+uv lock --upgrade      # repo Python deps in uv.lock (mutagen, mediafile, ...)
+uv tool upgrade --all  # beets engine (+ chroma/fetchart/discogs/beetcamp extras) + the gbc editable install
+"""
+
 [tasks.audit]
 description = "Scan runtime deps for known vulnerabilities"
 # --skip-editable: don't audit gbc itself (not on PyPI); --cache-dir: project-local cache (avoids the
