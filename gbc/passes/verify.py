@@ -19,7 +19,7 @@ from ..beets import run_beet
 from ..config import Config
 from ..logs import get_logger
 from ..sidecars import quarantine_dir, safe_move
-from ..util import backup_db, prune_empty_dirs
+from ..util import backup_db, prune_empty_dirs, skip_on_error
 
 APIKEY = os.environ.get("GBC_ACOUSTID_APIKEY", "1vOwZtEn")  # beets' shared key; set your own to avoid throttling
 MATCH_SCORE = 0.5   # AcoustID result score above which the file CONFIRMS the tagged recording
@@ -83,7 +83,7 @@ def _file_verdict(path, mbid):
 def _official_known(mbid):
     """True if the MusicBrainz recording is registered in AcoustID (>=1 fingerprint); None if inconclusive."""
     url = f"https://api.acoustid.org/v2/track/list_by_mbid?format=json&client={APIKEY}&mbid={mbid}"
-    req = urllib.request.Request(url, headers={"User-Agent": "gbc/0.7 (golden-beets-config)"})
+    req = urllib.request.Request(url, headers={"User-Agent": "gbc/0.8 (golden-beets-config)"})
     for attempt in range(RETRIES):
         try:
             with urllib.request.urlopen(req, timeout=15) as r:
@@ -154,22 +154,23 @@ def run(cfg: Config, scope="") -> int:
             checked += 1
         verdicts[itemid] = verdict
         if verdict == "imposter":                              # quarantine, never deleted
-            if not backed:
-                backup_db(cfg, "verify", log)
-                backed = True
-            qd = quarantine_dir(cfg.dump, "imposters", albumartist, album, year, fallback=Path(path).parent.name)
-            dest = qd / Path(path).name
-            i = 1
-            while dest.exists():
-                i += 1
-                dest = qd / f"{Path(path).stem} ({i}){Path(path).suffix}"
-            qd.mkdir(parents=True, exist_ok=True)
-            if safe_move(path, dest, log):                     # move out of clean, then drop the stale lib entry
-                rc, _ = run_beet(cfg, ["remove", "-f", f"id:{itemid}"], passname="verify", echo_lines=False)
-                if rc:
-                    log.warning("verify: `beet remove` rc=%d for id:%s -- stale lib entry may remain", rc, itemid)
-                moved.append(path)
-                log.info("QUARANTINE imposter (audio != tagged recording): %s -> %s/", Path(path).name, qd)
+            with skip_on_error(log, "verify", path):           # one bad move never loses the run's verdicts
+                if not backed:
+                    backup_db(cfg, "verify", log)
+                    backed = True
+                qd = quarantine_dir(cfg.dump, "imposters", albumartist, album, year, fallback=Path(path).parent.name)
+                dest = qd / Path(path).name
+                i = 1
+                while dest.exists():
+                    i += 1
+                    dest = qd / f"{Path(path).stem} ({i}){Path(path).suffix}"
+                qd.mkdir(parents=True, exist_ok=True)
+                if safe_move(path, dest, log):                 # move out of clean, then drop the stale lib entry
+                    rc, _ = run_beet(cfg, ["remove", "-f", f"id:{itemid}"], passname="verify", echo_lines=False)
+                    if rc:
+                        log.warning("verify: `beet remove` rc=%d for id:%s -- stale lib entry may remain", rc, itemid)
+                    moved.append(path)
+                    log.info("QUARANTINE imposter (audio != tagged recording): %s -> %s/", Path(path).name, qd)
 
     cfg.beetsdir.mkdir(parents=True, exist_ok=True)
     with cpath.open("w", encoding="utf-8") as fh:

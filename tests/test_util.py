@@ -1,7 +1,34 @@
 import unittest
+from unittest import mock
 
-from gbc.util import length_secs, prune_empty_dirs
+from gbc.util import length_secs, prune_empty_dirs, skip_on_error
 from tests.base import Base
+
+
+class TestSkipOnError(unittest.TestCase):
+    """Per-item isolation: one raising item is logged + swallowed, the loop keeps going."""
+
+    def test_isolates_bad_item_and_continues(self):
+        log = mock.MagicMock()
+        processed = []
+        for x in [1, 2, 3]:
+            with skip_on_error(log, "pass", x):
+                if x == 2:
+                    raise ValueError("boom")
+                processed.append(x)
+        self.assertEqual(processed, [1, 3])              # item 2 skipped, 1 and 3 still processed
+        log.warning.assert_called_once()                 # the failure was logged, not silent
+
+    def test_continue_inside_guard_still_works(self):
+        log = mock.MagicMock()
+        seen = []
+        for x in [1, 2, 3]:
+            with skip_on_error(log, "pass", x):
+                if x == 2:
+                    continue                             # explicit early-skip, not an error
+                seen.append(x)
+        self.assertEqual(seen, [1, 3])
+        log.warning.assert_not_called()                  # a clean `continue` is not a failure
 
 
 class TestLengthSecs(unittest.TestCase):

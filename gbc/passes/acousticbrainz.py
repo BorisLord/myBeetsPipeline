@@ -24,7 +24,7 @@ TIMEOUT = 25
 # AB is keyed by the MusicBrainz recording UUID. A non-UUID id (e.g. a Discogs '14266022-1') makes AB 400 the
 # WHOLE batch ("not a valid UUID"), so every co-batched UUID would cache None -> drop these before batching.
 _UUID_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
-_UA = "gbc/0.7 (golden-beets-config)"   # default Python-urllib UA can be 403'd/throttled by the public API
+_UA = "gbc/0.8 (golden-beets-config)"   # default Python-urllib UA can be 403'd/throttled by the public API
 
 # No mediafile tag-frame mapping -> stored as db-only flex attrs, then injected into files as custom-tag
 # frames (TXXX / Vorbis comments / MP4 freeform atoms) so Navidrome can read them. The rest (bpm,
@@ -231,7 +231,11 @@ def run(cfg: Config, scope: str = "") -> int:
             continue
         for m in batch:
             doc = docs.get(m)
-            cache[m] = _fields_for(doc) if doc else None   # None = confirmed absent, never re-queried
+            try:
+                cache[m] = _fields_for(doc) if doc else None   # None = confirmed absent, never re-queried
+            except Exception as e:                             # a single malformed AB doc must not abort the batch
+                log.warning("acousticbrainz: parse failed for %s (%s) -> treated as absent", m, e)
+                cache[m] = None
         cfg.beetsdir.mkdir(parents=True, exist_ok=True)
         cpath.write_text(json.dumps(cache), encoding="utf-8")
 

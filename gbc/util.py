@@ -2,11 +2,23 @@
 import contextlib
 import os
 import shutil
+from collections.abc import Iterator
 from datetime import datetime
 from pathlib import Path
 
 from .beets import run_beet
 from .config import Config
+
+
+@contextlib.contextmanager
+def skip_on_error(log, passname: str, item) -> Iterator[None]:
+    """Per-item guard inside a pass loop: an unexpected error on ONE item is logged + swallowed so the loop
+    continues (one bad album/file never aborts the pass, nor loses the state written after it).
+    Use: `for x in xs: with skip_on_error(log, "pass", x): <body>`."""
+    try:
+        yield
+    except Exception as e:                              # deliberate catch-all: this IS the isolation boundary
+        log.warning("%s: skipped %r (%s: %s)", passname, item, type(e).__name__, e)
 
 
 def backup_db(cfg: Config, tag: str, log) -> None:

@@ -7,7 +7,7 @@ from pathlib import Path
 from ..beets import run_beet
 from ..config import Config
 from ..logs import get_logger
-from ..util import backup_db, count_items
+from ..util import backup_db, count_items, skip_on_error
 
 # (label, target desc, beet -f format, query, quarantine subdir). WMA stored as "Windows Media"
 # (-> format::Windows); WAV/AIFF matched by path (avoids format-name surprises); ALAC by format (distinct
@@ -28,15 +28,16 @@ def _reap_stale(cfg: Config, query: list, log) -> tuple[int, int]:
     for line in text.splitlines():
         if "\t" not in line:
             continue
-        itemid, path = line.split("\t", 1)
-        path = path.strip().encode("utf-8", "surrogateescape").decode("utf-8", "surrogateescape")
-        if path and not Path(path).exists():
-            rc, _ = run_beet(cfg, ["remove", "-f", f"id:{itemid}"], passname="convert", echo_lines=False)
-            if rc:
-                log.warning("convert: `beet remove` rc=%d for stale id:%s", rc, itemid)
-            reaped += 1
-        else:
-            present += 1
+        with skip_on_error(log, "convert", line[:80]):
+            itemid, path = line.split("\t", 1)
+            path = path.strip().encode("utf-8", "surrogateescape").decode("utf-8", "surrogateescape")
+            if path and not Path(path).exists():
+                rc, _ = run_beet(cfg, ["remove", "-f", f"id:{itemid}"], passname="convert", echo_lines=False)
+                if rc:
+                    log.warning("convert: `beet remove` rc=%d for stale id:%s", rc, itemid)
+                reaped += 1
+            else:
+                present += 1
     return reaped, present
 
 

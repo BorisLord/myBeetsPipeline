@@ -11,7 +11,7 @@ from ..beets import run_beet
 from ..config import Config
 from ..logs import get_logger
 from ..sidecars import quarantine_dir, safe_move
-from ..util import backup_db, prune_empty_dirs
+from ..util import backup_db, prune_empty_dirs, skip_on_error
 
 JUNK = re.compile(r"https?://|www\.|\.(com|net|org|tk|br)|\bEAC\b|\bLame\b|\bLAMEB?\s*\d|CDex|Easy CD-DA|Tagged By"
                   r"|Encoded by|ripped by|Created with|meXPiracy|Autodesk|bandcamp|No Comment", re.I)
@@ -78,22 +78,23 @@ def _cull(cfg: Config, paths, log) -> int:
     backup_db(cfg, "qa-cull", log)
     moved = 0
     for p in dict.fromkeys(paths):                 # dedupe, keep order
-        fp = Path(p)
-        if not fp.exists():
-            continue
-        qd = quarantine_dir(cfg.dump, "corrupt", fp.parent.parent.name, fp.parent.name, fallback=fp.parent.name)
-        dest = qd / fp.name
-        i = 1
-        while dest.exists():
-            i += 1
-            dest = qd / f"{fp.stem} ({i}){fp.suffix}"
-        qd.mkdir(parents=True, exist_ok=True)
-        if safe_move(p, dest, log):
-            rc, _ = run_beet(cfg, ["remove", "-f", f"path:{p}"], passname="qa", echo_lines=False)
-            if rc:
-                log.warning("qa: `beet remove` rc=%d for %s -- stale lib entry may remain", rc, p)
-            moved += 1
-            log.info("CULL corrupt: %s -> %s/", fp.name, qd)
+        with skip_on_error(log, "qa-cull", p):
+            fp = Path(p)
+            if not fp.exists():
+                continue
+            qd = quarantine_dir(cfg.dump, "corrupt", fp.parent.parent.name, fp.parent.name, fallback=fp.parent.name)
+            dest = qd / fp.name
+            i = 1
+            while dest.exists():
+                i += 1
+                dest = qd / f"{fp.stem} ({i}){fp.suffix}"
+            qd.mkdir(parents=True, exist_ok=True)
+            if safe_move(p, dest, log):
+                rc, _ = run_beet(cfg, ["remove", "-f", f"path:{p}"], passname="qa", echo_lines=False)
+                if rc:
+                    log.warning("qa: `beet remove` rc=%d for %s -- stale lib entry may remain", rc, p)
+                moved += 1
+                log.info("CULL corrupt: %s -> %s/", fp.name, qd)
     if moved:
         prune_empty_dirs(cfg.clean)                # remove album shells left empty when all tracks were culled
     log.info("  [CORRUPT] %d corrupt file(s) culled to %s/corrupt -- recoverable, never deleted", moved, cfg.dump)
@@ -153,12 +154,13 @@ def run(cfg: Config, scope: str = "", cull: bool = False) -> int:
     other_bad = 0
     if shutil.which("ffmpeg"):
         for p in paths:
-            if Path(p).suffix.lower() in (".mp3", ".flac"):
-                continue
-            if _ffmpeg_corrupt(p):
-                other_bad += 1
-                corrupt.append(p)
-                log.info("  BAD (decode failed): %s", p)
+            with skip_on_error(log, "qa-decode", p):
+                if Path(p).suffix.lower() in (".mp3", ".flac"):
+                    continue
+                if _ffmpeg_corrupt(p):
+                    other_bad += 1
+                    corrupt.append(p)
+                    log.info("  BAD (decode failed): %s", p)
     log.info("=== 6b. other-format decode: %d bad ===", other_bad)
 
     # 6c. container vs extension mismatch (magic bytes) -- 6/6b miss it (see _container_mismatch)
