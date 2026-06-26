@@ -15,14 +15,14 @@
 #   • Never lose data: matched albums MOVE to `directory:`, the rest stay put.
 #
 # HOW TO USE (standalone): copy to ~/.config/beets/config.yaml, set `directory:`,
-#   `pip install beets[chroma,fetchart,lastgenre]`, install fpcalc + ffmpeg, then
+#   `pip install beets[chroma,fetchart,lastgenre,discogs] beetcamp`, install fpcalc + ffmpeg, then
 #   `beet import /path/to/messy/music`.
 #
 # CAVEAT — this file is the *config*; the full recovery tool (golden-beets-config /
 #   `gbc`) adds the orchestration a config alone can't express: pre-import dedup
 #   (keep best bitrate), carrying official sidecars into the album, a read-only QA
 #   audit (integrity, lossy<192k, junk metadata, RIFF-in-.mp3 detection), and
-#   on-demand format conversion (WMA→AAC, WAV/AIFF→FLAC). Config gets you ~80%; the
+#   on-demand format conversion (WMA→Opus, WAV/AIFF→FLAC). Config gets you ~80%; the
 #   wrapper is the rest.
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -31,8 +31,11 @@ directory: ~/Music/clean        # <- SET THIS: where matched albums are filed (y
 
 # `musicbrainz` MUST be listed -- it is a separate metadata-source plugin; without it `chroma`
 # yields NO MusicBrainz candidates and fingerprint matching silently finds nothing.
+# discogs + deezer (beets-native) + bandcamp (needs `beetcamp`) are extra match sources, purely ADDITIVE
+# (ranked by distance, never override a good MB match). fromfilename guesses title/track/artist from the
+# FILENAME when tags are poor (fills EMPTY fields only). spotify/beatport left out (key-gated).
 # Everything except duplicates/unimported/zero/missing/mbsync/bareasc runs automatically on import.
-plugins: musicbrainz chroma fetchart embedart lastgenre replaygain scrub ftintitle duplicates unimported zero missing mbsync bareasc
+plugins: musicbrainz discogs deezer bandcamp chroma fromfilename fetchart embedart lastgenre replaygain scrub ftintitle duplicates unimported zero missing mbsync bareasc
 
 import:
   move: yes              # matched albums MOVE to `directory:`; unmatched files stay where they are (curation pile)
@@ -53,6 +56,12 @@ musicbrainz:
   extra_tags: [alias, barcode, catalognum, country, label, media, tracks, year]
   genres: yes            # MusicBrainz genres (primary, vote-sorted); lastgenre (force:no) only fills the gaps
 
+# Discogs = SECONDARY source (fallback): rescues releases MusicBrainz lacks. Needs beets[discogs] + a personal
+# access token (https://www.discogs.com/settings/developers). The penalty keeps MusicBrainz winning ties.
+discogs:
+  user_token: REPLACE_ME      # leave REPLACE_ME to skip Discogs; set your own token to enable it
+  data_source_mismatch_penalty: 0.5
+
 match:
   strong_rec_thresh: 0.20   # distance < 0.20 = "strong" => auto-accepted. Higher = accept more (less strict); lower = stricter.
   preferred:
@@ -60,8 +69,8 @@ match:
     media: ['Digital Media|File', 'CD']
     original_year: yes
   max_rec:
-    missing_tracks: low     # an album missing tracks can't be "strong" -> incomplete albums are skipped
-    unmatched_tracks: low   # ditto for extra/unmatched tracks
+    missing_tracks: low        # missing tracks = INCOMPLETE album -> skipped, parked for manual curation
+    unmatched_tracks: strong   # extra tracks (bonus/hidden) = complete album + extras -> auto-accept
 
 # Skipped during import: hidden + video files + common junk. Append your own quarantine/junk folder names.
 ignore: ['.*', '*.mp4', '*.mov', '*.avi', '*.mkv', '*.m4v', '*.wmv', '*.flv', '*.ts', '*.mpg', '*.mpeg', '*.webm',
@@ -95,16 +104,18 @@ zero:
 unimported:
   ignore_extensions: jpg png pdf log cue m3u nfo txt
 
-# Compilations keep their comp=1 TAG but are filed under $albumartist (Various Artists -> "Various Artists/<album>/"),
-# NOT in a separate Compilations/ tree. `comp:` MUST be set explicitly to = default: — beets' BUILT-IN default for
-# comp: is 'Compilations/...', so merely omitting it does NOT work. Multi-disc uses continuous numbering (no $disc
-# in the path) so 2xCD merges into one folder with no track-number collisions.
+# Special collections get an "_" prefix so they sort at the TOP of the library on disk (above the A-Z artists):
+# _Soundtracks/ (VA OSTs), _Various Artists/ (VA compilations), _Singles/ (loose tracks). TAGS are unchanged
+# (albumartist stays "Various Artists") so players still group by tag; the "_" is filesystem-only. The plain
+# `comp:` rule keeps single-artist comps (Best of X) under the artist AND overrides beets' BUILT-IN
+# 'Compilations/' default (omitting comp: does NOT work). Multi-disc uses continuous numbering (no $disc).
 paths:
-  # VARIOUS-ARTISTS soundtracks -> Soundtracks/; a single-artist OST (Purple Rain…) stays under its artist via default:.
-  comp:1 albumtype:soundtrack: 'Soundtracks/$album%aunique{}/%if{$track,$track }$artist - $title'
-  default:   '$albumartist/$album%if{$year, ($year)}%aunique{}/%if{$track,$track - }$title'
-  comp:      '$albumartist/$album%aunique{}/%if{$track,$track }$artist - $title'
-  singleton: '%if{$album,$albumartist/$album%aunique{}/%if{$track,$track - }$title,$artist/$title%sunique{}}'
+  # First match wins: VA soundtrack, then VA compilation, then the single-artist comp catch-all, then default.
+  comp:1 albumtype:soundtrack:         '_Soundtracks/$album%aunique{}/%if{$track,$track }$artist - $title'
+  comp:1 albumartist::Various Artists: '_Various Artists/$album%aunique{}/%if{$track,$track }$artist - $title'
+  comp:                                '$albumartist/$album%aunique{}/%if{$track,$track }$artist - $title'
+  default:                             '$albumartist/$album%if{$year, ($year)}%aunique{}/%if{$track,$track - }$title'
+  singleton:                           '_Singles/%if{$albumartist,$albumartist,$artist}/%if{$album,$album%aunique{}/}%if{$track,$track - }$title'
 
 # ── Native enrichment, all DURING `beet import` (auto: yes) ──
 chroma: {auto: yes}      # AcoustID fingerprint matching (needs fpcalc / Chromaprint)
@@ -113,7 +124,9 @@ scrub: {auto: yes}       # strip foreign/garbage tags on every write. NOTE: a WM
 fetchart:
   auto: yes              # cover art: local folder image first, then web sources
   maxwidth: 1000
-  minwidth: 300
+  minwidth: 500          # reject tiny/thumbnail art
+  enforce_ratio: 10%     # reject banners/strips: keep only ~square covers (within 10%)
+  max_filesize: 5242880  # 5 MiB cap -- skip bloated scans
   quality: 75
   store_source: yes
   fanarttv_key: REPLACE_ME   # OPTIONAL online-art keys; leave REPLACE_ME to skip those sources (never commit keys)
