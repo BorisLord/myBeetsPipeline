@@ -1,18 +1,18 @@
 """Pass -- per-track AcoustID fingerprint verification: detect & quarantine IMPOSTER tracks.
 
-An imposter has the right title/duration/tags but its AUDIO is not the matched recording; album-mode import
+An imposter has the right title/duration/tags but its AUDIO is a different recording; album-mode import
 trusts the lot and `chroma` gives no penalty to a track it can't identify, so it slips into a "strong" album.
-We act ONLY when BOTH: the file's own fingerprint doesn't match the tagged recording AND that recording is
-known to AcoustID. Inconclusive (rate-limit/timeout) -> left alone. Imposter -> MOVED to $MUSIC_DUMP (never
-deleted) + dropped from the lib. Verdicts cached per file.
+We act ONLY on POSITIVE evidence: the file's own fingerprint CONFIDENTLY matches a DIFFERENT recording than
+its tags claim. If AcoustID merely can't confirm the tagged recording (no confident alternative either) the
+track is KEPT (unprovable -- intros/short/live/obscure audio AcoustID just can't ID); a same-song sibling /
+credit variant is kept too. Inconclusive (rate-limit/timeout) -> left alone. Imposter -> MOVED to $MUSIC_DUMP
+(never deleted) + dropped from the lib. Verdicts cached per file.
 """
 import importlib.util
 import json
 import os
 import re
 import time
-import urllib.error
-import urllib.request
 from pathlib import Path
 
 from ..beets import run_beet
@@ -32,18 +32,23 @@ def _acoustid_available() -> bool:
     return importlib.util.find_spec("acoustid") is not None
 
 
-def _same_artist(a: str, b: str) -> bool:
-    """True if two artist strings share a primary artist (one normalises into the other), so the same song on
-    another release or a 'feat.' variant isn't flagged -- only a genuinely DIFFERENT artist (e.g. a cover)."""
-    na, nb = re.sub(r"\W+", "", a.lower()), re.sub(r"\W+", "", b.lower())
-    return bool(na) and bool(nb) and (na in nb or nb in na)
+def _same_song(m_artist: str, m_title: str, artist: str, title: str) -> bool:
+    """The audio confidently matched a DIFFERENT recording id than the tag -- but is it the SAME song under a
+    sibling / credit variant (e.g. 'Zenzile, High Tone' vs 'Zenzile Meets High Tone', 'A & B' vs 'A, B')?
+    True iff the titles are identical AND the two artist credits share a token. A real wrong-audio that merely
+    shares a title (UB40's 'Don't Break My Heart' vs Den Harrow's) still flags -- the artist tokens don't overlap."""
+    if re.sub(r"\W+", "", m_title.lower()) != re.sub(r"\W+", "", title.lower()):
+        return False
+    ta = {t for t in re.split(r"\W+", m_artist.lower()) if len(t) >= 2}
+    tb = {t for t in re.split(r"\W+", artist.lower()) if len(t) >= 2}
+    return bool(ta & tb)
 
 
 def _file_verdict(path, mbid):
     """('ok', present, mismatch) once AcoustID answers conclusively, else ('error', False, None). present=True
     when the file's own fingerprint lists the tagged recording -> genuine; False => audio is something else.
-    mismatch=(artist, title, score) when the audio matches a DIFFERENT recording >= MISMATCH_SCORE (logged
-    only, never acted on)."""
+    mismatch=(artist, title, score) when the audio matches a DIFFERENT recording >= MISMATCH_SCORE -- the
+    positive evidence that flags an imposter."""
     import acoustid
     for attempt in range(RETRIES):
         try:
@@ -80,24 +85,6 @@ def _file_verdict(path, mbid):
     return "error", False, None
 
 
-def _official_known(mbid):
-    """True if the MusicBrainz recording is registered in AcoustID (>=1 fingerprint); None if inconclusive."""
-    url = f"https://api.acoustid.org/v2/track/list_by_mbid?format=json&client={APIKEY}&mbid={mbid}"
-    req = urllib.request.Request(url, headers={"User-Agent": "gbc/0.8 (golden-beets-config)"})
-    for attempt in range(RETRIES):
-        try:
-            with urllib.request.urlopen(req, timeout=15) as r:
-                data = json.loads(r.read())
-        except (urllib.error.URLError, ValueError, TimeoutError, OSError):
-            time.sleep(2 ** attempt)
-            continue
-        if data.get("status") != "ok":
-            time.sleep(2 ** attempt)
-            continue
-        return len(data.get("tracks") or []) >= 1
-    return None
-
-
 def run(cfg: Config, scope="") -> int:
     """Flag imposter tracks among items in `scope` (whole library if empty). Returns the imposter count."""
     log = get_logger("verify")
@@ -129,18 +116,16 @@ def run(cfg: Config, scope="") -> int:
             if status != "ok":
                 incon += 1
                 continue                                       # inconclusive -> not cached, retried next run
-            if mismatch and not _same_artist(mismatch[0], artist):
-                mismatches += 1
-                log.warning("MISMATCH: %s - %s | audio = %s - %s (%.2f) -- kept, tag likely wrong",
-                            artist, title, mismatch[0], mismatch[1], mismatch[2])
-            if present:
+            sibling = bool(mismatch) and _same_song(mismatch[0], mismatch[1], artist, title)
+            if present or sibling:                 # tagged recording present, or a same-song sibling/credit-variant id
                 verdict = "ok"
-            else:
-                known = _official_known(mbid)
-                if known is None:
-                    incon += 1
-                    continue
-                verdict = "imposter" if known else "rare"      # rare = file & official both unknown -> genuine, kept
+            elif mismatch:                         # audio CONFIDENTLY matches a different recording -> proven imposter
+                mismatches += 1
+                log.warning("IMPOSTER: %s - %s | audio = %s - %s (%.2f)",
+                            artist, title, mismatch[0], mismatch[1], mismatch[2])
+                verdict = "imposter"
+            else:                                  # tagged id absent but NO confident alternative -> unprovable, KEEP
+                verdict = "rare"
             cache[key] = verdict
             checked += 1
         if verdict == "imposter":                              # quarantine, never deleted
