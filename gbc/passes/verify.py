@@ -98,17 +98,9 @@ def _official_known(mbid):
     return None
 
 
-def _write_verdicts(cfg: Config, verdicts: dict) -> None:
-    """Persist per-item-id verdicts for reclaim (id not path: path-rendering-independent). Rewritten each run
-    (empty until proven), so a crash/skipped verify leaves reclaim nothing stale to trust."""
-    cfg.beetsdir.mkdir(parents=True, exist_ok=True)
-    (cfg.beetsdir / "gbc-verify-verdicts.json").write_text(json.dumps(verdicts), encoding="utf-8")
-
-
 def run(cfg: Config, scope="") -> int:
     """Flag imposter tracks among items in `scope` (whole library if empty). Returns the imposter count."""
     log = get_logger("verify")
-    _write_verdicts(cfg, {})                                   # fresh slate: reclaim trusts only this run's verdicts
     if not _acoustid_available():
         log.warning("pyacoustid not available -> fingerprint verification skipped")
         return 0
@@ -125,7 +117,6 @@ def run(cfg: Config, scope="") -> int:
 
     moved, checked, incon, backed = [], 0, 0, False
     mismatches = 0
-    verdicts: dict[str, str] = {}
     for itemid, path, mbid, albumartist, album, year, artist, title in rows:
         try:
             st = Path(path).stat()
@@ -152,7 +143,6 @@ def run(cfg: Config, scope="") -> int:
                 verdict = "imposter" if known else "rare"      # rare = file & official both unknown -> genuine, kept
             cache[key] = verdict
             checked += 1
-        verdicts[itemid] = verdict
         if verdict == "imposter":                              # quarantine, never deleted
             with skip_on_error(log, "verify", path):           # one bad move never loses the run's verdicts
                 if not backed:
@@ -175,7 +165,6 @@ def run(cfg: Config, scope="") -> int:
     cfg.beetsdir.mkdir(parents=True, exist_ok=True)
     with cpath.open("w", encoding="utf-8") as fh:
         json.dump(cache, fh)
-    _write_verdicts(cfg, verdicts)                             # drives the reclaim pass
     log.info("=== fingerprint verify: %d check(s), %d imposter(s) quarantined, %d mismatch(es), %d inconclusive ===",
              checked, len(moved), mismatches, incon)
     if moved:

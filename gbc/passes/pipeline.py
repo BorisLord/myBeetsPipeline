@@ -1,4 +1,4 @@
-"""The pipeline: import -> upgrade -> albumdedup -> convert -> verify -> acousticbrainz -> qa -> reclaim.
+"""The pipeline: import -> upgrade -> albumdedup -> convert -> verify -> acousticbrainz -> qa.
 `run` + `inbox` (cron) both call it; the trigger differs and the cron door skips the costly upgrade
 full-source scan (`upgrade_scan=False`). Ordering is load-bearing: upgrade right after
 import (it acts on copies this import dup-skipped) and before albumdedup; albumdedup needs only import metadata
@@ -10,7 +10,7 @@ from datetime import datetime
 from .. import state
 from ..config import Config
 from ..logs import get_logger
-from . import acousticbrainz, albumdedup, convert, import_, qa, reclaim, upgrade, verify
+from . import acousticbrainz, albumdedup, convert, import_, qa, upgrade, verify
 
 
 def run(cfg: Config, *, full: bool = False, src=None, reimport: bool = False, upgrade_scan: bool = True) -> int:
@@ -78,7 +78,6 @@ def run(cfg: Config, *, full: bool = False, src=None, reimport: bool = False, up
     _phase("verify", lambda: verify.run(cfg, scope=scope))
     _phase("acousticbrainz", lambda: acousticbrainz.run(cfg, scope=scope))
     _phase("qa", lambda: qa.run(cfg, scope=scope, cull=True))
-    _phase("reclaim", lambda: reclaim.run(cfg))
 
     state.set_watermark(cfg, wm_new)
     state.clear_progress(cfg)                # run finished cleanly -> no resume state to keep

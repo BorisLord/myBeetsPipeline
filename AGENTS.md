@@ -11,22 +11,21 @@ singletons stay in the source for manual curation.
 ## Architecture
 
 `gbc run` (manual) + `gbc inbox` (cron) call one pipeline (`passes/pipeline.py`):
-**import → upgrade → albumdedup → convert → verify → acousticbrainz → qa → reclaim**.
+**import → upgrade → albumdedup → convert → verify → acousticbrainz → qa**.
 
 beets does art/genres/replaygain/scrub/ftintitle natively on import (`auto: yes`). gbc adds, per pass:
 **artfix** (strip mime=None WMA art pre-import so scrub can't crash), **upgrade** (a better dup-skipped source
 copy replaces a clean album), **albumdedup** (cross-source dup albums), **dedup**/**sidecars** (move-mode only),
 **convert** (WMA→Opus, WAV/AIFF/ALAC→FLAC, before verify), **verify** (AcoustID imposter → quarantine),
-**acousticbrainz** (network BPM/key/mood), **qa** (audit + cull corrupt), **reclaim**. beets via
+**acousticbrainz** (network BPM/key/mood), **qa** (audit + cull corrupt). beets via
 `beets.run_beet` (captures stdout+stderr; `--pretend` → stderr). `setup.sh` is the only bash.
 
 - **Move-vs-copy = beets' decision** (`beetscfg.py`). Source CONSUMED (move, copy+delete) → dedup/sidecars/prune
-  run. Source PRESERVED (copy/reflink/hardlink/symlink/in-place) → source READ-ONLY, those skipped. **reclaim**
-  runs only in preserve+`clean_independent`: per album, when every track is verify-`ok`, the source folder →
-  `$MUSIC_DUMP` (never deleted); partial/ambiguous/multi-disc → kept (clean↔source by duration-multiset).
+  run. Source PRESERVED (copy/reflink/hardlink/symlink/in-place) → source READ-ONLY, those skipped; gbc never
+  mutates a preserved source (the source stays the curation backlog; `gbc singletons` dup-skips what's already clean).
 - **Quarantine** (`sidecars.quarantine_dir`): `<reason>/<Albumartist>/<Album (Year)>/…`. Reasons: `imposters`,
-  `duplicates`, `redundant-art`, `shells`, `converted`, `corrupt`, `reclaimed`, `upgraded`. Good (reclaimed/
-  upgraded) never mixes with bad.
+  `duplicates`, `redundant-art`, `shells`, `converted`, `corrupt`, `upgraded`. Good (`upgraded`) never mixes
+  with bad.
 - **Logs:** one append-only `$LOG_DIR/gbc.log`, lines tagged `[pass]`+run-id; beets' decisions →
   `import-decisions.log`.
 - **Incremental:** verify/ab/qa scope to items added since the last good run (watermark); `--all` reprocesses,

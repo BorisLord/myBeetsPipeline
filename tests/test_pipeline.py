@@ -3,7 +3,7 @@ import unittest
 from unittest import mock
 
 from gbc import state
-from gbc.passes import acousticbrainz, albumdedup, convert, import_, pipeline, qa, reclaim, upgrade, verify
+from gbc.passes import acousticbrainz, albumdedup, convert, import_, pipeline, qa, upgrade, verify
 from tests.base import Base
 
 
@@ -18,7 +18,6 @@ class TestPipeline(Base):
             mock.patch.object(verify, "run", lambda c, *a, **k: calls.append("verify") or 0),
             mock.patch.object(acousticbrainz, "run", lambda c, *a, **k: calls.append("acousticbrainz") or 0),
             mock.patch.object(qa, "run", lambda c, *a, **k: calls.append("qa") or 0),
-            mock.patch.object(reclaim, "run", lambda c, *a, **k: calls.append("reclaim") or 0),
         ]
 
     def test_resume_skips_already_done_passes(self):
@@ -33,7 +32,7 @@ class TestPipeline(Base):
         self.assertEqual(rc, 0)
         self.assertNotIn("import", calls)                          # skipped -> no source re-walk
         self.assertNotIn("upgrade", calls)
-        self.assertEqual(calls, ["albumdedup", "convert", "verify", "acousticbrainz", "qa", "reclaim"])
+        self.assertEqual(calls, ["albumdedup", "convert", "verify", "acousticbrainz", "qa"])
         self.assertEqual(state.get_progress(self.cfg), {})         # cleared on clean finish
         self.assertEqual(state.get_watermark(self.cfg), "2026-06-25T10:00:00")  # the resumed wm_new is reused
 
@@ -58,7 +57,7 @@ class TestPipeline(Base):
             self.assertEqual(rc, 0)
             self.assertEqual("upgrade" in calls, expect)               # gated exactly by the flag
             self.assertEqual(calls[0], "import")                       # the rest of the pipeline is unaffected
-            self.assertEqual(calls[-1], "reclaim")
+            self.assertEqual(calls[-1], "qa")
 
     def test_qa_scope_follows_watermark(self):
         seen = {}

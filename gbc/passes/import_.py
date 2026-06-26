@@ -4,7 +4,7 @@ Branches on the EFFECTIVE beets import op (via `beetscfg`):
   - source CONSUMED (move / copy+delete): dedup source, carry official sidecars into matched albums, sweep
     the emptied shells.
   - source PRESERVED (copy / reflink / hardlink / symlink / in-place): source is READ-ONLY -- dedup/sidecars/
-    prune all move source files, so they're skipped; verified originals are moved later by the reclaim pass.
+    prune all move source files, so they're skipped; the source is left untouched.
 """
 import tempfile
 from pathlib import Path

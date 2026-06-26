@@ -43,7 +43,7 @@ def _san(s):
 
 def quarantine_dir(dump, reason, albumartist="", album="", year="", *, fallback=""):
     """Canonical $MUSIC_DUMP layout, grouped by WHY, mirroring clean: <reason>/<Albumartist>/<Album (Year)>/.
-    `reason` = category (imposters/duplicates/reclaimed/redundant-art/shells). Falls back to <reason>/<fallback>
+    `reason` = category (imposters/duplicates/redundant-art/shells). Falls back to <reason>/<fallback>
     when there is no metadata (audio-less shells, untagged files)."""
     base = Path(dump) / reason
     artist = _san(albumartist)

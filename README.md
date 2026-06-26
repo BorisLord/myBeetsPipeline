@@ -37,7 +37,6 @@ gbc import [SOURCE] [--reimport]   album-match import only
 gbc qa [QUERY]          read-only technical audit + anomaly scan
 gbc anomaly [QUERY]     read-only name/anomaly scan only
 gbc verify [QUERY]      quarantine imposter tracks (audio ≠ tagged recording) via AcoustID
-gbc reclaim             copy-mode: move fully-verified source albums to quarantine
 gbc acousticbrainz [QUERY]   fetch BPM/key/mood from AcousticBrainz (network-only; bpm+key → file tags)
 gbc convert             normalise formats in clean: WMA→Opus, WAV/AIFF/ALAC→FLAC (originals → quarantine)
 gbc singletons [DIR] [--apply]   loose source tracks + imposters → singletons in _Singles/; promote complete albums (Nova-first)
@@ -52,7 +51,7 @@ gbc uninstall [--purge] remove the tooling (never your music)
 
 ## Pipeline
 
-    import → upgrade → albumdedup → convert → verify → acousticbrainz → qa → reclaim
+    import → upgrade → albumdedup → convert → verify → acousticbrainz → qa
 
 | pass | what it does |
 |---|---|
@@ -63,15 +62,14 @@ gbc uninstall [--purge] remove the tooling (never your music)
 | **verify** | re-fingerprint each track → quarantine imposters (audio ≠ tagged recording) |
 | **acousticbrainz** | add BPM / key / mood / danceable (file tags + db flex attrs) |
 | **qa** | audit + cull corrupt / undecodable files → quarantine |
-| **reclaim** | copy-mode only: drain a source album to quarantine once every track is verified `ok` |
 
 `library.db` is backed up before any file-moving pass; everything culled goes to `$MUSIC_DUMP` (**never `rm`**).
 A killed multi-hour run resumes where it stopped (finished passes are skipped).
 
 **Source consumed vs preserved** is beets' `import.move`/`copy` decision (read from `beet config`): in **move**
 mode gbc also dedups the source, carries official sidecars into the album, and prunes empty shells; in
-**copy/reflink/hardlink** mode the source is read-only and **reclaim** drains it once every track is verified
-`ok`. Symlink/in-place never reclaim (clean would dangle).
+**copy/reflink/hardlink/symlink/in-place** mode the source is read-only and left untouched — it stays the
+curation backlog (`gbc singletons` dup-skips anything already in the clean library).
 
 ## Configuration
 

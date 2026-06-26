@@ -1,9 +1,8 @@
 """Read beets' RESOLVED import op and derive how gbc adapts -- the op (move/copy/link/hardlink/reflink/delete)
 is beets' call, not gbc's. `beet config` prints the merged YAML (defaults + config.yaml + overlays) = the
-EFFECTIVE behaviour, never a guess. From it we derive two booleans the passes branch on:
-  source_consumed   -- beets removes the originals (move, or delete after copy/link) -> gbc MAY move source.
-  clean_independent -- clean holds a real standalone copy (copy/reflink/hardlink, NOT symlink/in-place) ->
-                       reclaiming a verified source original is safe.
+EFFECTIVE behaviour, never a guess. From it we derive the boolean the passes branch on:
+  source_consumed -- beets removes the originals (move, or delete after copy/link) -> gbc MAY move source
+                     (dedup/sidecars/prune); when preserved, the source is left untouched.
 """
 import io
 from dataclasses import dataclass
@@ -45,16 +44,6 @@ class BeetsImport:
     @property
     def source_preserved(self) -> bool:
         return not self.source_consumed
-
-    @property
-    def makes_copy(self) -> bool:
-        """A real standalone file lands in clean (vs an in-place add, or a symlink back to the source)."""
-        return self.copy or self.reflink or self.hardlink
-
-    @property
-    def clean_independent(self) -> bool:
-        """Safe to reclaim a verified source original: clean keeps a standalone copy AND source is preserved."""
-        return self.source_preserved and self.makes_copy
 
     @property
     def label(self) -> str:
@@ -104,7 +93,6 @@ def read_import(cfg: Config) -> BeetsImport:
     _, text = run_beet(cfg, ["config"], passname="beetscfg", echo_lines=False, merge_stderr=False)
     _warn_missing_plugins(text, log)
     bi = parse_import(text)
-    log.info("beets import op = %s (source %s, clean %s)", bi.label,
-             "preserved" if bi.source_preserved else "consumed",
-             "independent" if bi.clean_independent else "linked/in-place")
+    log.info("beets import op = %s (source %s)", bi.label,
+             "preserved" if bi.source_preserved else "consumed")
     return bi

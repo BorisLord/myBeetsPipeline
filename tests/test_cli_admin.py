@@ -4,7 +4,7 @@ from unittest import mock
 
 from gbc import admin, cli
 from gbc import config as configmod
-from gbc.passes import convert, import_, pipeline, qa, reclaim, singletons
+from gbc.passes import convert, import_, pipeline, qa, singletons
 from tests.base import Base
 
 
@@ -56,14 +56,6 @@ class TestCliDispatch(Base):
              mock.patch.object(configmod, "load", lambda: self.cfg), \
              mock.patch.object(convert, "run", lambda c: 0):
             self.assertEqual(cli.main(["convert"]), 0)
-
-    def test_reclaim_takes_lock_and_routes(self):
-        seen = {}
-        with mock.patch.object(cli, "configure", lambda *a, **k: None), \
-             mock.patch.object(configmod, "load", lambda: self.cfg), \
-             mock.patch.object(reclaim, "run", lambda c: seen.update(ran=True) or 3):
-            self.assertEqual(cli.main(["reclaim"]), 0)   # moved-count not leaked as exit code
-        self.assertTrue(seen.get("ran"))
 
 
 class TestAdminInit(Base):

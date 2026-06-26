@@ -27,8 +27,8 @@ def run_beet(cfg: Config, args, *, overlay: str | None = None, passname: str,
     # which beet's stderr warnings corrupt).
     err = subprocess.STDOUT if merge_stderr else subprocess.DEVNULL
     try:
-        # surrogateescape: non-UTF-8 file names round-trip identically to reclaim's sqlite BLOB decode (so
-        # verdict keys match), and a stray byte never crashes the capture.
+        # surrogateescape: non-UTF-8 file names round-trip identically (path keys stay stable across passes),
+        # and a stray byte never crashes the capture.
         with subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=err,
                               text=True, errors="surrogateescape", bufsize=1, env=env) as proc:
             assert proc.stdout is not None
