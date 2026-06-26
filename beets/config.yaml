@@ -129,7 +129,7 @@ fetchart:
   store_source: yes
   fanarttv_key: REPLACE_ME
   lastfm_key: REPLACE_ME
-  sources: [filesystem, coverart, fanarttv, itunes, amazon, lastfm, albumart]  # folder cover preferred
+  sources: [filesystem, coverart, fanarttv, itunes, lastfm]  # folder cover preferred; dropped amazon+albumart (slow/blocked remotes that HANG -- fetchart has no request timeout)
 embedart: {auto: yes, maxwidth: 500, quality: 70, ifempty: no}   # embed after fetchart, on import
 lastgenre: {auto: yes, source: album, count: 3, force: no, canonical: yes, whitelist: yes, prefer_specific: yes}
 replaygain: {auto: yes, backend: ffmpeg, overwrite: yes}   # EBU R128 during import (was a separate pass)
