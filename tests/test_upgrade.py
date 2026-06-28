@@ -86,6 +86,23 @@ class TestUpgradeRun(Base):
         self.assertEqual(n, 1)
         self.assertEqual(swapped, ["a1"])
 
+    def test_do_upgrade_restores_clean_copy_when_reimport_adds_nothing(self):
+        """Re-import adds no album (dup-skipped/weak) -> RESTORE the clean copy, not leave it removed (the
+        -7-albums data-safety regression)."""
+        clean_folder = self.cfg.clean / "Artist" / "Album (2001)"
+        clean_folder.mkdir(parents=True)
+        a = {"folder": str(clean_folder), "artist": "Artist", "album": "Album"}
+        moves, beet = [], []
+        with mock.patch.object(upgrade, "safe_move", lambda s, d, log: moves.append((Path(s), Path(d))) or True), \
+             mock.patch.object(upgrade, "run_beet", lambda c, args, **k: beet.append(args) or (0, "")), \
+             mock.patch.object(upgrade.import_, "run", lambda c, **k: 0), \
+             mock.patch.object(upgrade, "_album_ids", lambda c: {"x"}):     # same before+after -> no new album
+            ok = upgrade._do_upgrade(self.cfg, Path("/src/folder"), "99", a, mock.Mock())
+        self.assertFalse(ok)                                        # not upgraded
+        self.assertEqual(len(moves), 2)                            # clean -> quarantine, then quarantine -> clean
+        self.assertEqual(moves[1][1], clean_folder)                # the 2nd move RESTORES the clean folder
+        self.assertTrue(any("import" in args for args in beet))     # re-registered the lib row in place
+
     def test_wma_source_is_never_an_upgrade(self):
         self.cfg.src.mkdir(parents=True, exist_ok=True)
         folder = self.cfg.src / "War"

@@ -1,15 +1,11 @@
 """Pass -- replace a clean album with a HIGHER-QUALITY copy sitting in the source.
 
-`duplicate_action: skip` keeps the FIRST import of a release; a later, better copy (FLAC over the clean MP3, or
-a much higher-bitrate lossy) of the SAME release dup-skips at import and never enters -- so albumdedup (which
-only compares copies already IN the library) never sees it. This pass closes that gap: correlate each source
-album folder to a clean album by duration multiset + artist + title, and on a genuine upgrade move the clean
-copy to $MUSIC_DUMP/upgraded/ (NEVER deleted) + re-import the source.
-
-LOSSLESS replaces lossy; lossy->lossy only on a clear >= MIN_DELTA codec-normalised effective-bitrate jump (a
-256k Opus is never downgraded to a 320k MP3); a WMA source is skipped (`convert` would transcode it); an
-already-lossless clean album is the cutoff. Runs in the pipeline (cheap track-count pre-filter, then a mediafile
-probe + duration/artist/title correlation) and as `gbc upgrade [DIR] [--apply]`.
+`duplicate_action: skip` keeps the FIRST import; a later, better copy (FLAC over the clean MP3) of the SAME
+release dup-skips at import, so albumdedup (which only compares copies already IN the library) never sees it.
+This closes the gap: correlate each source album folder to a clean one by duration multiset + artist + title,
+and on a genuine upgrade move the clean copy to $MUSIC_DUMP/upgraded/ (NEVER deleted) + re-import the source.
+LOSSLESS replaces lossy; lossy->lossy only on a clear >= MIN_DELTA effective-bitrate jump; WMA source skipped
+(`convert` handles it); already-lossless clean = cutoff. Runs in the pipeline and as `gbc upgrade [DIR] [--apply]`.
 """
 import re
 from collections import Counter, defaultdict
@@ -32,9 +28,9 @@ _TIER = {3: "lossless", 2: "lossy", 1: "?"}
 
 
 def _artist_match(a: str, b: str) -> bool:
-    """True if two artists share a primary artist -- one's WORD set is a subset of the other's (so 'U2' matches
-    'U2 feat. X' but 'Eve' does NOT match 'Steve', unlike a naive substring). Guards the duration+title
-    correlation against a same-track-count, same-title album by a DIFFERENT artist."""
+    """True if two artists share a primary artist -- one's WORD set is a subset of the other's ('U2' matches
+    'U2 feat. X' but 'Eve' != 'Steve', unlike a substring). Guards the correlation against a same-count,
+    same-title album by a DIFFERENT artist."""
     ta = {w for w in (re.sub(r"\W+", "", t) for t in a.lower().split()) if w}
     tb = {w for w in (re.sub(r"\W+", "", t) for t in b.lower().split()) if w}
     return bool(ta) and bool(tb) and (ta <= tb or tb <= ta)
@@ -133,7 +129,7 @@ def _do_upgrade(cfg: Config, folder: Path, aid: str, a: dict, log) -> bool:
     if not clean_folder.is_dir():
         log.warning("upgrade: clean folder gone, skip: %s", clean_folder)
         return False
-    qd = quarantine_dir(cfg.dump, "upgraded", a["artist"])   # artist only; the folder name carries "Album (Year)"
+    qd = quarantine_dir(cfg.dump, "upgraded", clean_folder.parent.name)   # mirror clean's folder (_Various Artists &c)
     dest = qd / clean_folder.name
     n = 1
     while dest.exists():
@@ -147,9 +143,19 @@ def _do_upgrade(cfg: Config, folder: Path, aid: str, a: dict, log) -> bool:
     run_beet(cfg, ["remove", "-a", "-f", f"id:{aid}"], passname="upgrade", echo_lines=False)
     before = _album_ids(cfg)                                      # album ids once the clean copy is dropped
     import_.run(cfg, src=folder, reimport=True)   # full import (sidecars + dedup + VA-comp normalize), not a raw beet
-    if not (_album_ids(cfg) - before):       # a SPECIFIC new album must appear; a quiet weak/dup skip returns rc 0
-        log.warning("upgrade: re-import added no album for %s -- clean copy kept safe in %s, NOT upgraded (restore?)",
-                    folder, dest)
+    if not (_album_ids(cfg) - before):       # no new album -> source dup-skipped/weak-matched: RESTORE, true no-op
+        log.warning("upgrade: re-import added no album for %s -- restoring the clean copy (no-op upgrade)", folder)
+        if safe_move(dest, clean_folder, log):            # files back exactly where they were
+            cfg.beetsdir.mkdir(parents=True, exist_ok=True)
+            overlay = cfg.beetsdir / ".gbc-upgrade-restore.yaml"
+            try:
+                overlay.write_text("plugins: []\nimport: {copy: no, move: no}\n", encoding="utf-8")
+                run_beet(cfg, ["-c", str(overlay), "import", "-q", "-I", "-A", "--flat", str(clean_folder)],
+                         passname="upgrade")              # re-register the row IN PLACE (no copy -> no '.2', no hang)
+            finally:
+                overlay.unlink(missing_ok=True)           # don't leave the temp overlay lingering in BEETSDIR
+        else:
+            log.error("upgrade: could NOT restore %s -> %s -- clean copy recoverable in %s", dest, clean_folder, dest)
         return False
     log.info("  UPGRADED %s - %s: clean now from %s (old copy -> %s)", a["artist"], a["album"], folder, dest)
     return True
