@@ -40,7 +40,7 @@ def _build_parser() -> argparse.ArgumentParser:
     pv.add_argument("query", nargs="?", default="", help="scope query (default: whole library)")
     pab = sub.add_parser("acousticbrainz", help="fetch BPM/key/mood metadata from AcousticBrainz")
     pab.add_argument("query", nargs="?", default="", help="scope query (default: whole library)")
-    sub.add_parser("convert", help="normalise formats (WMA->AAC, WAV/AIFF->FLAC; originals -> quarantine)")
+    sub.add_parser("convert", help="normalise formats (WMA->Opus, WAV/AIFF->FLAC; originals -> quarantine)")
     pad = sub.add_parser("albumdedup", help="quarantine cross-source duplicate albums (keep the best-quality copy)")
     pad.add_argument("--pretend", action="store_true", help="report only (default: move the duplicates to quarantine)")
     pnv = sub.add_parser("nova", help="[detachable] classify reconstructable Radio-Nova compils from the library")
@@ -59,6 +59,12 @@ def _build_parser() -> argparse.ArgumentParser:
     return p
 
 
+def _ok(_count: int) -> int:
+    """Action passes return a COUNT of items acted on; the CLI must NOT leak it as the exit code
+    (`gbc acousticbrainz` enriching 109 is success, not "exit 109" = failure to cron/`&&`). Swallow it -> 0."""
+    return 0
+
+
 def main(argv=None) -> int:
     args = _build_parser().parse_args(argv)
     cfg = configmod.load()
@@ -74,29 +80,32 @@ def main(argv=None) -> int:
             return import_.run(cfg, src=args.source, reimport=args.reimport)
     if args.cmd == "singletons":
         with import_lock(cfg, blocking=True):
-            return singletons.run(cfg, src=args.source, reimport=args.reimport, apply=args.apply)
+            return _ok(singletons.run(cfg, src=args.source, reimport=args.reimport, apply=args.apply))
     if args.cmd == "qa":
-        return qa.run(cfg, scope=args.query)
+        return qa.run(cfg, scope=args.query)            # read-only audit (cull=False) -> no lock needed
     if args.cmd == "anomaly":
-        return qa.run_anomaly(cfg, scope=args.query)
-    if args.cmd == "verify":
-        return verify.run(cfg, scope=args.query)
-    if args.cmd == "acousticbrainz":
-        return acousticbrainz.run(cfg, scope=args.query)
-    if args.cmd == "nova":
-        return nova.run(cfg, refresh=args.refresh_cache)
+        return qa.run_anomaly(cfg, scope=args.query)    # read-only scan -> no lock needed
+    if args.cmd == "verify":                            # moves imposters + drops db rows -> serialise vs the cron
+        with import_lock(cfg, blocking=True):
+            return _ok(verify.run(cfg, scope=args.query))
+    if args.cmd == "acousticbrainz":                    # writes tags (beet modify/write) -> serialise vs the cron
+        with import_lock(cfg, blocking=True):
+            return _ok(acousticbrainz.run(cfg, scope=args.query))
+    if args.cmd == "nova":                              # re-tags loose tracks (beet modify) -> serialise vs the cron
+        with import_lock(cfg, blocking=True):
+            return _ok(nova.run(cfg, refresh=args.refresh_cache))
     if args.cmd == "upgrade":
         with import_lock(cfg, blocking=True):
-            return upgrade.run(cfg, src=args.source, apply=args.apply)
+            return _ok(upgrade.run(cfg, src=args.source, apply=args.apply))
     if args.cmd == "restore-imposters":           # TEMPORARY one-off (detachable)
         with import_lock(cfg, blocking=True):
-            return restore_imposters.run(cfg, apply=args.apply)
+            return _ok(restore_imposters.run(cfg, apply=args.apply))
     if args.cmd == "convert":
         with import_lock(cfg, blocking=True):
             return convert.run(cfg)
     if args.cmd == "albumdedup":
         with import_lock(cfg, blocking=True):
-            return albumdedup.run(cfg, do_apply=not args.pretend)
+            return _ok(albumdedup.run(cfg, do_apply=not args.pretend))
     if args.cmd == "init":
         return admin.init(cfg, cron=args.cron)
     if args.cmd == "uninstall":

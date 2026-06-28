@@ -4,7 +4,18 @@ from unittest import mock
 
 from gbc import admin, cli
 from gbc import config as configmod
-from gbc.passes import albumdedup, convert, import_, pipeline, qa, singletons
+from gbc.passes import (
+    acousticbrainz,
+    albumdedup,
+    convert,
+    import_,
+    nova,
+    pipeline,
+    qa,
+    singletons,
+    upgrade,
+    verify,
+)
 from tests.base import Base
 
 
@@ -67,6 +78,18 @@ class TestCliDispatch(Base):
                                seen.update(do_import=do_import) or 0):
             self.assertEqual(cli.main(["run", "--no-import"]), 0)
         self.assertFalse(seen.get("do_import"))      # --no-import -> post-import passes only
+
+    def test_action_passes_exit_0_despite_positive_count(self):
+        """An action pass RETURNS a count of items acted on; the CLI must NOT leak it as the process
+        exit code -- `gbc acousticbrainz` enriching 109 recordings is success, not exit 109 (which
+        cron/systemd/`&&` read as failure). Every action command exits 0 once the pass completes."""
+        for argv, modobj in [(["verify"], verify), (["acousticbrainz"], acousticbrainz),
+                             (["albumdedup"], albumdedup), (["upgrade"], upgrade),
+                             (["nova"], nova), (["singletons"], singletons)]:
+            with mock.patch.object(cli, "configure", lambda *a, **k: None), \
+                 mock.patch.object(configmod, "load", lambda: self.cfg), \
+                 mock.patch.object(modobj, "run", lambda *a, **k: 109):
+                self.assertEqual(cli.main(argv), 0, f"{argv[0]} must exit 0 despite a count of 109")
 
     def test_albumdedup_takes_lock_and_routes(self):
         seen = {}
