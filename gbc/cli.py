@@ -1,6 +1,7 @@
 """gbc CLI -- one tool, several doors. beets does art/genres/replaygain/scrub natively during import."""
 import argparse
 import secrets
+from types import ModuleType
 
 from . import admin
 from . import config as configmod
@@ -8,6 +9,7 @@ from .lock import import_lock
 from .logs import configure
 from .passes import acousticbrainz, albumdedup, convert, import_, inbox, nova, pipeline, qa, singletons, upgrade, verify
 
+restore_imposters: ModuleType | None
 try:                                  # TEMPORARY/detachable -- delete restore_imposters.py to remove the command
     from .passes import restore_imposters
 except ImportError:                               # pragma: no cover
@@ -97,7 +99,7 @@ def main(argv=None) -> int:
     if args.cmd == "upgrade":
         with import_lock(cfg, blocking=True):
             return _ok(upgrade.run(cfg, src=args.source, apply=args.apply))
-    if args.cmd == "restore-imposters":           # TEMPORARY one-off (detachable)
+    if args.cmd == "restore-imposters" and restore_imposters is not None:  # TEMPORARY one-off (detachable)
         with import_lock(cfg, blocking=True):
             return _ok(restore_imposters.run(cfg, apply=args.apply))
     if args.cmd == "convert":

@@ -22,8 +22,8 @@ description = "Apply ruff safe auto-fixes"
 run = "ruff check --fix gbc tests"
 
 [tasks.typecheck]
-description = "Static type check (mypy)"
-run = "uv run --with mypy mypy gbc --ignore-missing-imports"
+description = "Static type check (mypy; config in pyproject [tool.mypy])"
+run = "uv run --with mypy mypy"
 
 [tasks.upgrade]
 description = "Bump everything — mise tools (uv/ruff), locked Python deps, and the uv-installed CLIs (beets/gbc)"

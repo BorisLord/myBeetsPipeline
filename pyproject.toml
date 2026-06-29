@@ -20,3 +20,13 @@ build-backend = "hatchling.build"
 packages = ["gbc"]
 
 # Tests use the stdlib `unittest` (no pytest dependency) -- see `mise run test`.
+
+[tool.mypy]
+python_version = "3.13"
+files = ["gbc"]
+
+# Third-party libs without type stubs (C-backed / no py.typed): ignore just these, not all imports, so a
+# real typo'd internal import is still caught.
+[[tool.mypy.overrides]]
+module = ["yaml", "mediafile", "mutagen.*", "acoustid"]
+ignore_missing_imports = true

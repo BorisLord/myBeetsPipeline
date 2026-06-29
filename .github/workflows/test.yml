@@ -14,5 +14,7 @@ jobs:
       - uses: jdx/mise-action@v4
       - name: Lint
         run: mise run lint
+      - name: Typecheck
+        run: mise run typecheck
       - name: Unit tests
         run: mise run test
