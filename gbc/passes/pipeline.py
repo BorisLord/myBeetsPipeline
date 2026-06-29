@@ -4,6 +4,7 @@
 dup-skipped), albumdedup before the expensive passes (they skip quarantined albums), convert BEFORE verify so
 every later pass runs identically on the converted files.
 """
+import time
 from datetime import datetime
 
 from .. import state
@@ -37,10 +38,13 @@ def run(cfg: Config, *, full: bool = False, src=None, reimport: bool = False, up
     if not do_import:
         log.info("pipeline: skip import (--no-import) -- running the post-import passes on clean only")
     elif "import" not in done:
+        log.info("> pass import: start")
+        t0 = time.monotonic()
         rc = import_.run(cfg, src=src, reimport=reimport)
         if rc:
             log.error("pipeline ABORTED: import failed (rc=%d) -- watermark NOT advanced, will retry next run", rc)
             return rc
+        log.info("> pass import: done in %ds", int(time.monotonic() - t0))
         done.add("import")
         _save()
     else:
@@ -59,12 +63,15 @@ def run(cfg: Config, *, full: bool = False, src=None, reimport: bool = False, up
         if name in done:
             log.info("pipeline: skip %s (already done this run)", name)
             return
+        log.info("> pass %s: start", name)
+        t0 = time.monotonic()
         try:
             fn()
         except Exception:
             log.exception("%s pass errored (non-fatal)", name)
             failed = True                   # don't advance the watermark this run -> re-scoped + retried next run
             return
+        log.info("> pass %s: done in %ds", name, int(time.monotonic() - t0))
         done.add(name)
         _save()
 
