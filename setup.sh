@@ -22,8 +22,11 @@ fi
 # discogs->python3-discogs-client). --with beetcamp = the keyless `bandcamp` source (`deezer` is built in).
 if ! have beet; then
   read -rp "  install beets now via 'uv tool'? [y/N] " a
-  if [ "$a" = y ] || [ "$a" = Y ]; then uv tool install 'beets[chroma,fetchart,lastgenre,discogs]' --with beetcamp; fi
+  if [ "$a" = y ] || [ "$a" = Y ]; then uv tool install 'beets[chroma,fetchart,lastgenre,discogs]' --with beetcamp --with beets-filetote; fi
   export PATH="$HOME/.local/bin:$PATH"
+elif ! beet version 2>/dev/null | grep -E '^plugins:' | grep -q filetote; then
+  echo "  ${Y}adding the filetote plugin (carries booklet/scans/.lrc into albums) to beets...${R}"
+  uv tool install 'beets[chroma,fetchart,lastgenre,discogs]' --with beetcamp --with beets-filetote --force
 fi
 
 need=(); have fpcalc || need+=(fpcalc); have ffmpeg || need+=(ffmpeg); have flac || need+=(flac)

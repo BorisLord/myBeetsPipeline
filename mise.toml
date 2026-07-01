@@ -30,7 +30,7 @@ description = "Bump everything — mise tools (uv/ruff), locked Python deps, and
 run = """
 mise upgrade           # uv + ruff to latest (python stays pinned 3.13)
 uv lock --upgrade      # repo Python deps in uv.lock (mutagen, mediafile, ...)
-uv tool upgrade --all  # beets engine (+ chroma/fetchart/discogs/beetcamp extras) + the gbc editable install
+uv tool upgrade --all  # beets engine (+ chroma/fetchart/discogs/beetcamp/filetote extras) + the gbc editable install
 """
 
 [tasks.audit]

@@ -27,6 +27,8 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 directory: ~/Music/clean        # <- SET THIS: where matched albums are filed (your clean library)
+timeout: 10.0   # SQLite busy-timeout (s): a concurrent `beet ls` waits out an in-progress import write
+                # instead of erroring "database is locked" (default 5.0)
 # library: ~/.config/beets/library.db   # default; back it up before any bulk modify/move
 
 # `musicbrainz` MUST be listed -- it is a separate metadata-source plugin; without it `chroma`
@@ -35,7 +37,22 @@ directory: ~/Music/clean        # <- SET THIS: where matched albums are filed (y
 # (ranked by distance, never override a good MB match). fromfilename guesses title/track/artist from the
 # FILENAME when tags are poor (fills EMPTY fields only). spotify/beatport left out (key-gated).
 # Everything except duplicates/unimported/zero/missing/mbsync/bareasc runs automatically on import.
-plugins: musicbrainz discogs deezer bandcamp chroma fromfilename fetchart embedart lastgenre replaygain scrub ftintitle duplicates unimported zero missing mbsync bareasc
+plugins: musicbrainz discogs deezer bandcamp chroma fromfilename fetchart embedart lastgenre replaygain scrub ftintitle duplicates unimported zero missing mbsync bareasc types filetote
+
+# Declare the numeric AcousticBrainz flex attributes (the gbc acousticbrainz pass) as floats so range queries
+# work -- e.g. `beet ls mood_relaxed:0.9..` or `danceable:0.7..`. Without this beets stores them as text and
+# numeric ranges silently match nothing. Harmless in standalone use (just unused type declarations).
+types:
+  danceable: float
+  key_strength: float
+  tonal: float
+  mood_acoustic: float
+  mood_aggressive: float
+  mood_electronic: float
+  mood_happy: float
+  mood_party: float
+  mood_relaxed: float
+  mood_sad: float
 
 import:
   move: yes              # matched albums MOVE to `directory:`; unmatched files stay where they are (curation pile)
@@ -135,4 +152,14 @@ fetchart:
 embedart: {auto: yes, maxwidth: 500, quality: 70, ifempty: no}   # embed the fetched art into the files
 lastgenre: {auto: yes, source: album, count: 3, force: no, canonical: yes, whitelist: yes, prefer_specific: yes}
 replaygain: {auto: yes, backend: ffmpeg, overwrite: yes}         # EBU R128 loudness, computed on import (needs ffmpeg)
+# Carry an album's EXTRA files into the clean album on import: booklet/scans/back art, .cue/.log, and paired
+# .lrc lyrics -- the files native import drops. fetchart owns the PRIMARY cover (filesystem-first), so
+# cover/front/folder are excluded here to avoid a duplicate. Uses beets' move/copy op (works in consumed AND
+# preserved mode). gbc's sidecars pass no longer carries files -- it only prunes emptied source shells.
+filetote:
+  extensions: .pdf .cue .log .jpg .jpeg .png .gif .webp
+  pairing: {enabled: yes, extensions: .lrc}
+  exclude:
+    patterns:
+      primary-cover: ['[cC]over.*', '[fF]ront.*', '[fF]older.*']
 ui: {color: no}
